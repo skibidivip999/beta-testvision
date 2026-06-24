@@ -1,96 +1,60 @@
---[[
-    UI Blox Fruits - Nền đen, tab lớn + tab con, toggle/button, bo góc, hiệu ứng thu nhỏ 2 góc đối diện.
-    Kéo thả được, nút đổi icon, toggle ẩn/hiện toàn bộ GUI.
-    Dùng cho Synapse/Krnl.
---]]
+-- UI Night Hub - Đầy đủ tab, toggle/button + chức năng thực tế cho Blox Fruits.
+-- Khi tắt toggle GUI biến mất luôn.
 
 local player = game.Players.LocalPlayer
-local mouse = player:GetMouse()
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:FindFirstChild("Humanoid")
+local root = character:FindFirstChild("HumanoidRootPart")
+local workspace = game:GetService("Workspace")
+local runService = game:GetService("RunService")
+local virtualInput = game:GetService("VirtualInputManager")
 
--- Tạo ScreenGui
 local screenGui = Instance.new("ScreenGui")
 screenGui.Parent = game.CoreGui
-screenGui.Name = "Beta vip"
+screenGui.Name = "NightHubUI"
 screenGui.ResetOnSpawn = false
 
--- Hàm tạo góc bo tròn (dùng CornerRadius)
 local function applyCorners(guiObj, radius)
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, radius or 10)
     corner.Parent = guiObj
 end
 
--- Tạo Frame chính (nền đen, bo góc 10)
 local mainFrame = Instance.new("Frame")
 mainFrame.Parent = screenGui
-mainFrame.Size = UDim2.new(0, 500, 0, 400)
-mainFrame.Position = UDim2.new(0.5, -250, 0.5, -200)
+mainFrame.Size = UDim2.new(0, 650, 0, 520)
+mainFrame.Position = UDim2.new(0.5, -325, 0.5, -260)
 mainFrame.BackgroundColor3 = Color3.new(0, 0, 0)
 mainFrame.BackgroundTransparency = 0
 mainFrame.BorderSizePixel = 0
 applyCorners(mainFrame, 12)
 
--- Biến lưu trạng thái thu nhỏ (hiệu ứng 2 góc đối diện)
-local isMinimized = false
-local minSize = UDim2.new(0, 50, 0, 50)  -- Kích thước khi thu nhỏ
-local fullSize = UDim2.new(0, 500, 0, 400)
-local minPos = UDim2.new(0.5, -25, 0.5, -25) -- Vị trí khi thu nhỏ
-local fullPos = UDim2.new(0.5, -250, 0.5, -200)
-
--- Nút Toggle GUI (ẩn/hiện toàn bộ)
-local toggleGuiBtn = Instance.new("ImageButton")
-toggleGuiBtn.Parent = screenGui
-toggleGuiBtn.Size = UDim2.new(0, 40, 0, 40)
-toggleGuiBtn.Position = UDim2.new(0, 10, 0, 10)
-toggleGuiBtn.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
-toggleGuiBtn.BorderSizePixel = 0
-applyCorners(toggleGuiBtn, 20)
-toggleGuiBtn.Image = "rbxassetid://6031091078" -- icon mặc định (có thể đổi)
-toggleGuiBtn.ImageColor3 = Color3.new(1, 1, 1)
+-- Nút toggle GUI (ẩn/hiện toàn bộ)
+local toggleBtn = Instance.new("ImageButton")
+toggleBtn.Parent = screenGui
+toggleBtn.Size = UDim2.new(0, 40, 0, 40)
+toggleBtn.Position = UDim2.new(0, 10, 0, 10)
+toggleBtn.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+toggleBtn.BorderSizePixel = 0
+applyCorners(toggleBtn, 20)
+toggleBtn.Image = "rbxassetid://6031091078"
+toggleBtn.ImageColor3 = Color3.new(1, 1, 1)
 
 local guiVisible = true
-toggleGuiBtn.MouseButton1Click:Connect(function()
+toggleBtn.MouseButton1Click:Connect(function()
     guiVisible = not guiVisible
     mainFrame.Visible = guiVisible
-    -- Đổi icon (ví dụ)
-    if guiVisible then
-        toggleGuiBtn.Image = "rbxassetid://6031091078" -- icon mở
-    else
-        toggleGuiBtn.Image = "rbxassetid://6031091078" -- icon đóng (thay ID khác)
-    end
 end)
 
--- Nút thu nhỏ (hiệu ứng 2 góc đối diện)
-local minimizeBtn = Instance.new("ImageButton")
-minimizeBtn.Parent = mainFrame
-minimizeBtn.Size = UDim2.new(0, 30, 0, 30)
-minimizeBtn.Position = UDim2.new(1, -40, 0, 5)
-minimizeBtn.BackgroundColor3 = Color3.new(0.3, 0.3, 0.3)
-minimizeBtn.BorderSizePixel = 0
-applyCorners(minimizeBtn, 15)
-minimizeBtn.Image = "rbxassetid://6031091078" -- icon thu nhỏ
-
-minimizeBtn.MouseButton1Click:Connect(function()
-    isMinimized = not isMinimized
-    if isMinimized then
-        mainFrame:TweenSizeAndPosition(minSize, minPos, "Out", "Quad", 0.3, true)
-    else
-        mainFrame:TweenSizeAndPosition(fullSize, fullPos, "Out", "Quad", 0.3, true)
-    end
-end)
-
--- Kéo thả GUI (chỉ khi không thu nhỏ)
+-- Kéo thả GUI
 local dragging = false
-local dragStartPos
-local dragStartMouse
+local dragStartPos, dragStartMouse
 
 mainFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        if not isMinimized then
-            dragging = true
-            dragStartPos = mainFrame.Position
-            dragStartMouse = Vector2.new(mouse.X, mouse.Y)
-        end
+        dragging = true
+        dragStartPos = mainFrame.Position
+        dragStartMouse = Vector2.new(mouse.X, mouse.Y)
     end
 end)
 
@@ -100,7 +64,7 @@ mainFrame.InputEnded:Connect(function(input)
     end
 end)
 
-game:GetService("RunService").RenderStepped:Connect(function()
+runService.RenderStepped:Connect(function()
     if dragging then
         local delta = Vector2.new(mouse.X, mouse.Y) - dragStartMouse
         mainFrame.Position = UDim2.new(
@@ -112,133 +76,303 @@ game:GetService("RunService").RenderStepped:Connect(function()
     end
 end)
 
--- Tạo Tab chính (Tab lớn)
-local tabs = {"Combat", "Movement", "Utility"}
-local tabButtons = {}
-local currentTab = nil
+-- Lưu trạng thái toggle
+local toggleStates = {}
 
--- Hàm tạo tab con bên trong tab lớn
-local function createSubTab(parentTab, subName, funcs)
+-- Tạo toggle có chức năng
+local function createToggle(parent, label, xPos, yPos, defaultState, func)
+    local frame = Instance.new("Frame")
+    frame.Parent = parent
+    frame.Size = UDim2.new(0, 200, 0, 30)
+    frame.Position = UDim2.new(0, xPos, 0, yPos)
+    frame.BackgroundTransparency = 1
+
+    local labelObj = Instance.new("TextLabel")
+    labelObj.Parent = frame
+    labelObj.Size = UDim2.new(0.6, 0, 1, 0)
+    labelObj.BackgroundTransparency = 1
+    labelObj.Text = label
+    labelObj.TextColor3 = Color3.new(1, 1, 1)
+    labelObj.TextXAlignment = Enum.TextXAlignment.Left
+    labelObj.Font = Enum.Font.Gotham
+    labelObj.TextSize = 13
+
+    local btn = Instance.new("ImageButton")
+    btn.Parent = frame
+    btn.Size = UDim2.new(0, 50, 0, 25)
+    btn.Position = UDim2.new(0.7, 0, 0, 2)
+    btn.BackgroundColor3 = defaultState and Color3.new(0, 0.8, 0) or Color3.new(0.3, 0.3, 0.3)
+    btn.BorderSizePixel = 0
+    applyCorners(btn, 12)
+    btn.Image = "rbxassetid://6031091078"
+    btn.ImageColor3 = Color3.new(1, 1, 1)
+
+    local state = defaultState or false
+    toggleStates[label] = state
+
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        toggleStates[label] = state
+        btn.BackgroundColor3 = state and Color3.new(0, 0.8, 0) or Color3.new(0.3, 0.3, 0.3)
+        if func then
+            func(state)
+        end
+    end)
+
+    return {btn = btn, state = state, setState = function(newState)
+        state = newState
+        toggleStates[label] = state
+        btn.BackgroundColor3 = state and Color3.new(0, 0.8, 0) or Color3.new(0.3, 0.3, 0.3)
+        if func then func(state) end
+    end}
+end
+
+-- Tạo sub tab (khung con)
+local function createSubTab(parentTab, label, yPos)
     local subFrame = Instance.new("Frame")
     subFrame.Parent = parentTab
-    subFrame.Size = UDim2.new(1, -10, 0, 30)
-    subFrame.Position = UDim2.new(0, 5, 0, 5 + (#parentTab:GetChildren() - 1) * 35)
-    subFrame.BackgroundColor3 = Color3.new(0.15, 0.15, 0.15)
+    subFrame.Size = UDim2.new(1, -20, 0, 30)
+    subFrame.Position = UDim2.new(0, 10, 0, yPos)
+    subFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
     subFrame.BorderSizePixel = 0
     applyCorners(subFrame, 6)
 
     local subLabel = Instance.new("TextLabel")
     subLabel.Parent = subFrame
-    subLabel.Size = UDim2.new(0.5, 0, 1, 0)
+    subLabel.Size = UDim2.new(1, 0, 1, 0)
     subLabel.BackgroundTransparency = 1
-    subLabel.Text = subName
-    subLabel.TextColor3 = Color3.new(1, 1, 1)
+    subLabel.Text = label
+    subLabel.TextColor3 = Color3.new(0.8, 0.8, 0.8)
     subLabel.TextXAlignment = Enum.TextXAlignment.Left
     subLabel.Font = Enum.Font.GothamBold
     subLabel.TextSize = 14
 
-    -- Tạo các toggle/button bên trong tab con
-    local yOffset = 0
-    for _, funcData in ipairs(funcs) do
-        local btn = Instance.new("ImageButton")
-        btn.Parent = subFrame
-        btn.Size = UDim2.new(0, 60, 0, 25)
-        btn.Position = UDim2.new(0.5, 10 + yOffset, 0, 5)
-        btn.BackgroundColor3 = Color3.new(0.3, 0.3, 0.3)
-        btn.BorderSizePixel = 0
-        applyCorners(btn, 8)
-        btn.Image = "rbxassetid://6031091078" -- icon toggle
-        btn.ImageColor3 = Color3.new(1, 1, 1)
+    return subFrame
+end
 
-        local btnLabel = Instance.new("TextLabel")
-        btnLabel.Parent = btn
-        btnLabel.Size = UDim2.new(1, 0, 1, 0)
-        btnLabel.BackgroundTransparency = 1
-        btnLabel.Text = funcData.label
-        btnLabel.TextColor3 = Color3.new(1, 1, 1)
-        btnLabel.Font = Enum.Font.GothamBold
-        btnLabel.TextSize = 12
+-- ===== CHỨC NĂNG =====
 
-        local toggled = false
-        btn.MouseButton1Click:Connect(function()
-            toggled = not toggled
-            btn.BackgroundColor3 = toggled and Color3.new(0, 0.8, 0) or Color3.new(0.3, 0.3, 0.3)
-            if funcData.action then
-                funcData.action(toggled)
+-- Auto Farm NPC
+local autoFarmRunning = false
+local farmConnection = nil
+local function toggleAutoFarm(state)
+    autoFarmRunning = state
+    if farmConnection then farmConnection:Disconnect() farmConnection = nil end
+    if state then
+        farmConnection = runService.Heartbeat:Connect(function()
+            if not character or not root then return end
+            local nearest = nil
+            local dist = math.huge
+            for _, v in pairs(workspace:GetChildren()) do
+                if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
+                    if v.Name ~= player.Name and v:FindFirstChild("Humanoid").Health > 0 then
+                        local mag = (root.Position - v.HumanoidRootPart.Position).Magnitude
+                        if mag < dist and mag < 100 then
+                            dist = mag
+                            nearest = v
+                        end
+                    end
+                end
+            end
+            if nearest then
+                root.CFrame = nearest.HumanoidRootPart.CFrame * CFrame.new(0, 0, -3)
+                virtualInput:SendKeyEvent(true, "Q", false, nil)
+                task.wait(0.3)
+                virtualInput:SendKeyEvent(false, "Q", false, nil)
             end
         end)
-        yOffset = yOffset + 70
     end
 end
 
--- Tạo các tab lớn
-local tabY = 40
-for _, tabName in ipairs(tabs) do
-    local tabBtn = Instance.new("TextButton")
-    tabBtn.Parent = mainFrame
-    tabBtn.Size = UDim2.new(0, 80, 0, 30)
-    tabBtn.Position = UDim2.new(0, 10 + (#tabButtons * 90), 0, 5)
-    tabBtn.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
-    tabBtn.BorderSizePixel = 0
-    applyCorners(tabBtn, 8)
-    tabBtn.Text = tabName
-    tabBtn.TextColor3 = Color3.new(1, 1, 1)
-    tabBtn.Font = Enum.Font.GothamBold
-    tabBtn.TextSize = 14
-
-    -- Frame chứa nội dung tab (ẩn/hiện)
-    local contentFrame = Instance.new("Frame")
-    contentFrame.Parent = mainFrame
-    contentFrame.Size = UDim2.new(1, -20, 0, 300)
-    contentFrame.Position = UDim2.new(0, 10, 0, 45)
-    contentFrame.BackgroundColor3 = Color3.new(0.05, 0.05, 0.05)
-    contentFrame.BorderSizePixel = 0
-    applyCorners(contentFrame, 8)
-    contentFrame.Visible = false
-
-    table.insert(tabButtons, {btn = tabBtn, content = contentFrame})
-
-    tabBtn.MouseButton1Click:Connect(function()
-        -- Ẩn tất cả
-        for _, tb in ipairs(tabButtons) do
-            tb.content.Visible = false
-            tb.btn.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+-- ESP
+local espObjects = {}
+local espRunning = false
+local function toggleESP(state)
+    espRunning = state
+    if not state then
+        for _, v in pairs(espObjects) do v:Destroy() end
+        espObjects = {}
+        return
+    end
+    espObjects = {}
+    for _, v in pairs(workspace:GetChildren()) do
+        if v:IsA("Model") and v:FindFirstChild("Humanoid") and v.Name ~= player.Name then
+            local bill = Instance.new("BillboardGui")
+            bill.Parent = v
+            bill.Size = UDim2.new(0, 200, 0, 50)
+            bill.Adornee = v:FindFirstChild("HumanoidRootPart") or v.PrimaryPart
+            local label = Instance.new("TextLabel", bill)
+            label.Text = v.Name
+            label.TextColor3 = Color3.new(1, 0, 0)
+            label.Size = UDim2.new(1, 0, 1, 0)
+            label.BackgroundTransparency = 1
+            table.insert(espObjects, bill)
         end
-        contentFrame.Visible = true
-        tabBtn.BackgroundColor3 = Color3.new(0.4, 0.4, 0.4)
-        currentTab = tabName
+    end
+end
+
+-- Fly
+local flyRunning = false
+local flyConnection = nil
+local function toggleFly(state)
+    flyRunning = state
+    if flyConnection then flyConnection:Disconnect() flyConnection = nil end
+    if state and character and humanoid then
+        humanoid.PlatformStand = true
+        flyConnection = runService.Heartbeat:Connect(function()
+            if not character or not root then return end
+            local moveDirection = Vector3.new()
+            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.W) then moveDirection = moveDirection + workspace.CurrentCamera.CFrame.LookVector end
+            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.S) then moveDirection = moveDirection - workspace.CurrentCamera.CFrame.LookVector end
+            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.A) then moveDirection = moveDirection - workspace.CurrentCamera.CFrame.RightVector end
+            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.D) then moveDirection = moveDirection + workspace.CurrentCamera.CFrame.RightVector end
+            if moveDirection.Magnitude > 0 then
+                moveDirection = moveDirection.Unit * 50
+                root.Velocity = Vector3.new(moveDirection.X, root.Velocity.Y, moveDirection.Z)
+            end
+            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.Space) then
+                root.Velocity = Vector3.new(root.Velocity.X, 50, root.Velocity.Z)
+            end
+            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.LeftShift) then
+                root.Velocity = Vector3.new(root.Velocity.X, -50, root.Velocity.Z)
+            end
+        end)
+    elseif not state and character and humanoid then
+        humanoid.PlatformStand = false
+    end
+end
+
+-- Speed Hack
+local speedRunning = false
+local function toggleSpeed(state)
+    speedRunning = state
+    if character and humanoid then
+        humanoid.WalkSpeed = state and 50 or 16
+    end
+end
+
+-- Teleport to Island (ví dụ)
+local function teleportToIsland(pos)
+    if root then
+        root.CFrame = CFrame.new(pos)
+    end
+end
+
+-- Auto Harvest Fruit (giả lập)
+local harvestRunning = false
+local function toggleHarvest(state)
+    harvestRunning = state
+    if state then
+        print("Auto Harvest started")
+        -- Thêm logic harvest thực tế ở đây
+    else
+        print("Auto Harvest stopped")
+    end
+end
+
+-- Stop Harvest If Inventory Full
+local stopHarvestRunning = false
+local function toggleStopHarvest(state)
+    stopHarvestRunning = state
+    if state then
+        print("Stop Harvest when inventory full enabled")
+        -- Logic kiểm tra inventory
+    else
+        print("Stop Harvest when inventory full disabled")
+    end
+end
+
+-- ===== TẠO UI =====
+
+local tabNames = {"Main", "Shop", "Performance", "Misc", "BuffSection", "Fruits Collection"}
+local tabButtons = {}
+local contents = {}
+
+for i, name in ipairs(tabNames) do
+    local btn = Instance.new("TextButton")
+    btn.Parent = mainFrame
+    btn.Size = UDim2.new(0, 95, 0, 30)
+    btn.Position = UDim2.new(0, 10 + ((i-1) * 100), 0, 5)
+    btn.BackgroundColor3 = Color3.new(0.15, 0.15, 0.15)
+    btn.BorderSizePixel = 0
+    applyCorners(btn, 6)
+    btn.Text = name
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 12
+    table.insert(tabButtons, btn)
+
+    local content = Instance.new("ScrollingFrame")
+    content.Parent = mainFrame
+    content.Size = UDim2.new(1, -20, 0, 440)
+    content.Position = UDim2.new(0, 10, 0, 45)
+    content.BackgroundColor3 = Color3.new(0.05, 0.05, 0.05)
+    content.BorderSizePixel = 0
+    applyCorners(content, 8)
+    content.Visible = false
+    content.CanvasSize = UDim2.new(0, 0, 0, 0)
+    content.ScrollBarThickness = 6
+    table.insert(contents, content)
+
+    -- Nội dung từng tab
+    if name == "Main" then
+        createSubTab(content, "Main", 5)
+        createToggle(content, "Auto Farm", 20, 45, false, toggleAutoFarm)
+        createToggle(content, "Auto Boss", 20, 80, false, function(s) print("Auto Boss:", s) end)
+        
+    elseif name == "Shop" then
+        createSubTab(content, "Shop", 5)
+        createToggle(content, "Auto Buy", 20, 45, false, function(s) print("Auto Buy:", s) end)
+        createToggle(content, "Auto Sell", 20, 80, false, function(s) print("Auto Sell:", s) end)
+        
+    elseif name == "Performance" then
+        createSubTab(content, "Performance", 5)
+        createToggle(content, "Low Graphics", 20, 45, false, function(s) 
+            game:GetService("Workspace").GlobalShadows = not s
+            game:GetService("Workspace").QualityLevel = s and 1 or 4
+        end)
+        createToggle(content, "High FPS", 20, 80, false, function(s) 
+            game:GetService("Workspace").StreamingEnabled = s
+        end)
+        
+    elseif name == "Misc" then
+        createSubTab(content, "Misc", 5)
+        createToggle(content, "ESP", 20, 45, false, toggleESP)
+        createToggle(content, "Speed Hack", 20, 80, false, toggleSpeed)
+        createToggle(content, "Fly", 20, 115, false, toggleFly)
+        
+    elseif name == "BuffSection" then
+        createSubTab(content, "BuffSection", 5)
+        createToggle(content, "Damage Buff", 20, 45, false, function(s) print("Damage Buff:", s) end)
+        createToggle(content, "Defense Buff", 20, 80, false, function(s) print("Defense Buff:", s) end)
+        
+    elseif name == "Fruits Collection" then
+        createSubTab(content, "SelectFruits", 5)
+        createSubTab(content, "All", 40)
+        createSubTab(content, "AutoHarvest", 75)
+        createSubTab(content, "AutoHarvestfruitselectedingarden", 110)
+        createToggle(content, "CollectHighValuetoLowValueFruit", 20, 145, false, function(s) print("Collect High to Low:", s) end)
+        createSubTab(content, "AutoHarvestAll", 180)
+        createSubTab(content, "AutoHarvestall fruitsingarden", 215)
+        createSubTab(content, "Night*****", 250)
+        createToggle(content, "StopHarvestIfInventoryFull", 20, 285, false, toggleStopHarvest)
+        createToggle(content, "Auto Harvest", 20, 320, false, toggleHarvest)
+    end
+
+    btn.MouseButton1Click:Connect(function()
+        for j, b in ipairs(tabButtons) do
+            contents[j].Visible = false
+            b.BackgroundColor3 = Color3.new(0.15, 0.15, 0.15)
+        end
+        content.Visible = true
+        btn.BackgroundColor3 = Color3.new(0.4, 0.4, 0.4)
     end)
 end
 
--- Thêm tab con và chức năng cho từng tab
--- Combat
-local combatContent = tabButtons[1].content
-createSubTab(combatContent, "Auto Farm", {
-    {label = "Farm NPC", action = function(on) print("Auto Farm:", on) end},
-    {label = "Auto Boss", action = function(on) print("Auto Boss:", on) end},
-    {label = "Farm Fruit", action = function(on) print("Farm Fruit:", on) end}
-})
-
--- Movement
-local moveContent = tabButtons[2].content
-createSubTab(moveContent, "Teleport", {
-    {label = "TP to Island", action = function(on) print("TP Island:", on) end},
-    {label = "TP to Player", action = function(on) print("TP Player:", on) end},
-    {label = "Fly", action = function(on) print("Fly:", on) end}
-})
-
--- Utility
-local utilContent = tabButtons[3].content
-createSubTab(utilContent, "Misc", {
-    {label = "ESP", action = function(on) print("ESP:", on) end},
-    {label = "Auto Heal", action = function(on) print("Auto Heal:", on) end},
-    {label = "Speed", action = function(on) print("Speed:", on) end}
-})
-
--- Mở tab đầu tiên mặc định
+-- Mở tab đầu tiên
 if #tabButtons > 0 then
-    tabButtons[1].btn:Click()
+    tabButtons[1]:Click()
 end
 
--- Hàm đổi icon cho toggleGuiBtn (ví dụ)
--- Có thể gọi: toggleGuiBtn.Image = "rbxassetid://<new_id>"
+-- Teleport mẫu (gọi khi cần)
+-- teleportToIsland(Vector3.new(1000, 50, 2000))
