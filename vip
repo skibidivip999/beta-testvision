@@ -1,0 +1,244 @@
+--[[
+    UI Blox Fruits - Nền đen, tab lớn + tab con, toggle/button, bo góc, hiệu ứng thu nhỏ 2 góc đối diện.
+    Kéo thả được, nút đổi icon, toggle ẩn/hiện toàn bộ GUI.
+    Dùng cho Synapse/Krnl.
+--]]
+
+local player = game.Players.LocalPlayer
+local mouse = player:GetMouse()
+
+-- Tạo ScreenGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Parent = game.CoreGui
+screenGui.Name = "Beta vip"
+screenGui.ResetOnSpawn = false
+
+-- Hàm tạo góc bo tròn (dùng CornerRadius)
+local function applyCorners(guiObj, radius)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, radius or 10)
+    corner.Parent = guiObj
+end
+
+-- Tạo Frame chính (nền đen, bo góc 10)
+local mainFrame = Instance.new("Frame")
+mainFrame.Parent = screenGui
+mainFrame.Size = UDim2.new(0, 500, 0, 400)
+mainFrame.Position = UDim2.new(0.5, -250, 0.5, -200)
+mainFrame.BackgroundColor3 = Color3.new(0, 0, 0)
+mainFrame.BackgroundTransparency = 0
+mainFrame.BorderSizePixel = 0
+applyCorners(mainFrame, 12)
+
+-- Biến lưu trạng thái thu nhỏ (hiệu ứng 2 góc đối diện)
+local isMinimized = false
+local minSize = UDim2.new(0, 50, 0, 50)  -- Kích thước khi thu nhỏ
+local fullSize = UDim2.new(0, 500, 0, 400)
+local minPos = UDim2.new(0.5, -25, 0.5, -25) -- Vị trí khi thu nhỏ
+local fullPos = UDim2.new(0.5, -250, 0.5, -200)
+
+-- Nút Toggle GUI (ẩn/hiện toàn bộ)
+local toggleGuiBtn = Instance.new("ImageButton")
+toggleGuiBtn.Parent = screenGui
+toggleGuiBtn.Size = UDim2.new(0, 40, 0, 40)
+toggleGuiBtn.Position = UDim2.new(0, 10, 0, 10)
+toggleGuiBtn.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+toggleGuiBtn.BorderSizePixel = 0
+applyCorners(toggleGuiBtn, 20)
+toggleGuiBtn.Image = "rbxassetid://6031091078" -- icon mặc định (có thể đổi)
+toggleGuiBtn.ImageColor3 = Color3.new(1, 1, 1)
+
+local guiVisible = true
+toggleGuiBtn.MouseButton1Click:Connect(function()
+    guiVisible = not guiVisible
+    mainFrame.Visible = guiVisible
+    -- Đổi icon (ví dụ)
+    if guiVisible then
+        toggleGuiBtn.Image = "rbxassetid://6031091078" -- icon mở
+    else
+        toggleGuiBtn.Image = "rbxassetid://6031091078" -- icon đóng (thay ID khác)
+    end
+end)
+
+-- Nút thu nhỏ (hiệu ứng 2 góc đối diện)
+local minimizeBtn = Instance.new("ImageButton")
+minimizeBtn.Parent = mainFrame
+minimizeBtn.Size = UDim2.new(0, 30, 0, 30)
+minimizeBtn.Position = UDim2.new(1, -40, 0, 5)
+minimizeBtn.BackgroundColor3 = Color3.new(0.3, 0.3, 0.3)
+minimizeBtn.BorderSizePixel = 0
+applyCorners(minimizeBtn, 15)
+minimizeBtn.Image = "rbxassetid://6031091078" -- icon thu nhỏ
+
+minimizeBtn.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    if isMinimized then
+        mainFrame:TweenSizeAndPosition(minSize, minPos, "Out", "Quad", 0.3, true)
+    else
+        mainFrame:TweenSizeAndPosition(fullSize, fullPos, "Out", "Quad", 0.3, true)
+    end
+end)
+
+-- Kéo thả GUI (chỉ khi không thu nhỏ)
+local dragging = false
+local dragStartPos
+local dragStartMouse
+
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if not isMinimized then
+            dragging = true
+            dragStartPos = mainFrame.Position
+            dragStartMouse = Vector2.new(mouse.X, mouse.Y)
+        end
+    end
+end)
+
+mainFrame.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+game:GetService("RunService").RenderStepped:Connect(function()
+    if dragging then
+        local delta = Vector2.new(mouse.X, mouse.Y) - dragStartMouse
+        mainFrame.Position = UDim2.new(
+            dragStartPos.X.Scale,
+            dragStartPos.X.Offset + delta.X,
+            dragStartPos.Y.Scale,
+            dragStartPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- Tạo Tab chính (Tab lớn)
+local tabs = {"Combat", "Movement", "Utility"}
+local tabButtons = {}
+local currentTab = nil
+
+-- Hàm tạo tab con bên trong tab lớn
+local function createSubTab(parentTab, subName, funcs)
+    local subFrame = Instance.new("Frame")
+    subFrame.Parent = parentTab
+    subFrame.Size = UDim2.new(1, -10, 0, 30)
+    subFrame.Position = UDim2.new(0, 5, 0, 5 + (#parentTab:GetChildren() - 1) * 35)
+    subFrame.BackgroundColor3 = Color3.new(0.15, 0.15, 0.15)
+    subFrame.BorderSizePixel = 0
+    applyCorners(subFrame, 6)
+
+    local subLabel = Instance.new("TextLabel")
+    subLabel.Parent = subFrame
+    subLabel.Size = UDim2.new(0.5, 0, 1, 0)
+    subLabel.BackgroundTransparency = 1
+    subLabel.Text = subName
+    subLabel.TextColor3 = Color3.new(1, 1, 1)
+    subLabel.TextXAlignment = Enum.TextXAlignment.Left
+    subLabel.Font = Enum.Font.GothamBold
+    subLabel.TextSize = 14
+
+    -- Tạo các toggle/button bên trong tab con
+    local yOffset = 0
+    for _, funcData in ipairs(funcs) do
+        local btn = Instance.new("ImageButton")
+        btn.Parent = subFrame
+        btn.Size = UDim2.new(0, 60, 0, 25)
+        btn.Position = UDim2.new(0.5, 10 + yOffset, 0, 5)
+        btn.BackgroundColor3 = Color3.new(0.3, 0.3, 0.3)
+        btn.BorderSizePixel = 0
+        applyCorners(btn, 8)
+        btn.Image = "rbxassetid://6031091078" -- icon toggle
+        btn.ImageColor3 = Color3.new(1, 1, 1)
+
+        local btnLabel = Instance.new("TextLabel")
+        btnLabel.Parent = btn
+        btnLabel.Size = UDim2.new(1, 0, 1, 0)
+        btnLabel.BackgroundTransparency = 1
+        btnLabel.Text = funcData.label
+        btnLabel.TextColor3 = Color3.new(1, 1, 1)
+        btnLabel.Font = Enum.Font.GothamBold
+        btnLabel.TextSize = 12
+
+        local toggled = false
+        btn.MouseButton1Click:Connect(function()
+            toggled = not toggled
+            btn.BackgroundColor3 = toggled and Color3.new(0, 0.8, 0) or Color3.new(0.3, 0.3, 0.3)
+            if funcData.action then
+                funcData.action(toggled)
+            end
+        end)
+        yOffset = yOffset + 70
+    end
+end
+
+-- Tạo các tab lớn
+local tabY = 40
+for _, tabName in ipairs(tabs) do
+    local tabBtn = Instance.new("TextButton")
+    tabBtn.Parent = mainFrame
+    tabBtn.Size = UDim2.new(0, 80, 0, 30)
+    tabBtn.Position = UDim2.new(0, 10 + (#tabButtons * 90), 0, 5)
+    tabBtn.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+    tabBtn.BorderSizePixel = 0
+    applyCorners(tabBtn, 8)
+    tabBtn.Text = tabName
+    tabBtn.TextColor3 = Color3.new(1, 1, 1)
+    tabBtn.Font = Enum.Font.GothamBold
+    tabBtn.TextSize = 14
+
+    -- Frame chứa nội dung tab (ẩn/hiện)
+    local contentFrame = Instance.new("Frame")
+    contentFrame.Parent = mainFrame
+    contentFrame.Size = UDim2.new(1, -20, 0, 300)
+    contentFrame.Position = UDim2.new(0, 10, 0, 45)
+    contentFrame.BackgroundColor3 = Color3.new(0.05, 0.05, 0.05)
+    contentFrame.BorderSizePixel = 0
+    applyCorners(contentFrame, 8)
+    contentFrame.Visible = false
+
+    table.insert(tabButtons, {btn = tabBtn, content = contentFrame})
+
+    tabBtn.MouseButton1Click:Connect(function()
+        -- Ẩn tất cả
+        for _, tb in ipairs(tabButtons) do
+            tb.content.Visible = false
+            tb.btn.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+        end
+        contentFrame.Visible = true
+        tabBtn.BackgroundColor3 = Color3.new(0.4, 0.4, 0.4)
+        currentTab = tabName
+    end)
+end
+
+-- Thêm tab con và chức năng cho từng tab
+-- Combat
+local combatContent = tabButtons[1].content
+createSubTab(combatContent, "Auto Farm", {
+    {label = "Farm NPC", action = function(on) print("Auto Farm:", on) end},
+    {label = "Auto Boss", action = function(on) print("Auto Boss:", on) end},
+    {label = "Farm Fruit", action = function(on) print("Farm Fruit:", on) end}
+})
+
+-- Movement
+local moveContent = tabButtons[2].content
+createSubTab(moveContent, "Teleport", {
+    {label = "TP to Island", action = function(on) print("TP Island:", on) end},
+    {label = "TP to Player", action = function(on) print("TP Player:", on) end},
+    {label = "Fly", action = function(on) print("Fly:", on) end}
+})
+
+-- Utility
+local utilContent = tabButtons[3].content
+createSubTab(utilContent, "Misc", {
+    {label = "ESP", action = function(on) print("ESP:", on) end},
+    {label = "Auto Heal", action = function(on) print("Auto Heal:", on) end},
+    {label = "Speed", action = function(on) print("Speed:", on) end}
+})
+
+-- Mở tab đầu tiên mặc định
+if #tabButtons > 0 then
+    tabButtons[1].btn:Click()
+end
+
+-- Hàm đổi icon cho toggleGuiBtn (ví dụ)
+-- Có thể gọi: toggleGuiBtn.Image = "rbxassetid://<new_id>"
