@@ -1,5 +1,5 @@
--- UI Night Hub - Đầy đủ tab, toggle/button + chức năng thực tế cho Blox Fruits.
--- Khi tắt toggle GUI biến mất luôn.
+-- UI Night Hub - Tab lớn, bên trong là tab nhỏ (sub-tab), dưới sub-tab là toggle/button có chức năng.
+-- Kéo thả, toggle ẩn/hiện toàn bộ GUI, bo góc.
 
 local player = game.Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
@@ -8,6 +8,8 @@ local root = character:FindFirstChild("HumanoidRootPart")
 local workspace = game:GetService("Workspace")
 local runService = game:GetService("RunService")
 local virtualInput = game:GetService("VirtualInputManager")
+local userInput = game:GetService("UserInputService")
+local mouse = player:GetMouse()
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Parent = game.CoreGui
@@ -22,8 +24,8 @@ end
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Parent = screenGui
-mainFrame.Size = UDim2.new(0, 650, 0, 520)
-mainFrame.Position = UDim2.new(0.5, -325, 0.5, -260)
+mainFrame.Size = UDim2.new(0, 750, 0, 580)
+mainFrame.Position = UDim2.new(0.5, -375, 0.5, -290)
 mainFrame.BackgroundColor3 = Color3.new(0, 0, 0)
 mainFrame.BackgroundTransparency = 0
 mainFrame.BorderSizePixel = 0
@@ -83,7 +85,7 @@ local toggleStates = {}
 local function createToggle(parent, label, xPos, yPos, defaultState, func)
     local frame = Instance.new("Frame")
     frame.Parent = parent
-    frame.Size = UDim2.new(0, 200, 0, 30)
+    frame.Size = UDim2.new(0, 220, 0, 30)
     frame.Position = UDim2.new(0, xPos, 0, yPos)
     frame.BackgroundTransparency = 1
 
@@ -127,27 +129,21 @@ local function createToggle(parent, label, xPos, yPos, defaultState, func)
     end}
 end
 
--- Tạo sub tab (khung con)
-local function createSubTab(parentTab, label, yPos)
-    local subFrame = Instance.new("Frame")
-    subFrame.Parent = parentTab
-    subFrame.Size = UDim2.new(1, -20, 0, 30)
-    subFrame.Position = UDim2.new(0, 10, 0, yPos)
-    subFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
-    subFrame.BorderSizePixel = 0
-    applyCorners(subFrame, 6)
-
-    local subLabel = Instance.new("TextLabel")
-    subLabel.Parent = subFrame
-    subLabel.Size = UDim2.new(1, 0, 1, 0)
-    subLabel.BackgroundTransparency = 1
-    subLabel.Text = label
-    subLabel.TextColor3 = Color3.new(0.8, 0.8, 0.8)
-    subLabel.TextXAlignment = Enum.TextXAlignment.Left
-    subLabel.Font = Enum.Font.GothamBold
-    subLabel.TextSize = 14
-
-    return subFrame
+-- Tạo button (không toggle, chỉ click)
+local function createButton(parent, label, xPos, yPos, callback)
+    local btn = Instance.new("TextButton")
+    btn.Parent = parent
+    btn.Size = UDim2.new(0, 120, 0, 30)
+    btn.Position = UDim2.new(0, xPos, 0, yPos)
+    btn.BackgroundColor3 = Color3.new(0.3, 0.3, 0.3)
+    btn.BorderSizePixel = 0
+    applyCorners(btn, 8)
+    btn.Text = label
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 13
+    btn.MouseButton1Click:Connect(callback or function() end)
+    return btn
 end
 
 -- ===== CHỨC NĂNG =====
@@ -222,18 +218,18 @@ local function toggleFly(state)
         flyConnection = runService.Heartbeat:Connect(function()
             if not character or not root then return end
             local moveDirection = Vector3.new()
-            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.W) then moveDirection = moveDirection + workspace.CurrentCamera.CFrame.LookVector end
-            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.S) then moveDirection = moveDirection - workspace.CurrentCamera.CFrame.LookVector end
-            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.A) then moveDirection = moveDirection - workspace.CurrentCamera.CFrame.RightVector end
-            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.D) then moveDirection = moveDirection + workspace.CurrentCamera.CFrame.RightVector end
+            if userInput:IsKeyDown(Enum.KeyCode.W) then moveDirection = moveDirection + workspace.CurrentCamera.CFrame.LookVector end
+            if userInput:IsKeyDown(Enum.KeyCode.S) then moveDirection = moveDirection - workspace.CurrentCamera.CFrame.LookVector end
+            if userInput:IsKeyDown(Enum.KeyCode.A) then moveDirection = moveDirection - workspace.CurrentCamera.CFrame.RightVector end
+            if userInput:IsKeyDown(Enum.KeyCode.D) then moveDirection = moveDirection + workspace.CurrentCamera.CFrame.RightVector end
             if moveDirection.Magnitude > 0 then
                 moveDirection = moveDirection.Unit * 50
                 root.Velocity = Vector3.new(moveDirection.X, root.Velocity.Y, moveDirection.Z)
             end
-            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.Space) then
+            if userInput:IsKeyDown(Enum.KeyCode.Space) then
                 root.Velocity = Vector3.new(root.Velocity.X, 50, root.Velocity.Z)
             end
-            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.LeftShift) then
+            if userInput:IsKeyDown(Enum.KeyCode.LeftShift) then
                 root.Velocity = Vector3.new(root.Velocity.X, -50, root.Velocity.Z)
             end
         end)
@@ -251,60 +247,122 @@ local function toggleSpeed(state)
     end
 end
 
--- Teleport to Island (ví dụ)
-local function teleportToIsland(pos)
-    if root then
-        root.CFrame = CFrame.new(pos)
-    end
-end
-
--- Auto Harvest Fruit (giả lập)
+-- Auto Harvest
 local harvestRunning = false
 local function toggleHarvest(state)
     harvestRunning = state
-    if state then
-        print("Auto Harvest started")
-        -- Thêm logic harvest thực tế ở đây
-    else
-        print("Auto Harvest stopped")
-    end
+    print("Auto Harvest:", state)
 end
 
 -- Stop Harvest If Inventory Full
 local stopHarvestRunning = false
 local function toggleStopHarvest(state)
     stopHarvestRunning = state
-    if state then
-        print("Stop Harvest when inventory full enabled")
-        -- Logic kiểm tra inventory
-    else
-        print("Stop Harvest when inventory full disabled")
+    print("Stop Harvest If Inventory Full:", state)
+end
+
+-- Teleport function (ví dụ)
+local function teleportToIsland(pos)
+    if root then
+        root.CFrame = CFrame.new(pos)
     end
 end
 
--- ===== TẠO UI =====
+-- ===== TẠO UI VỚI TAB LỚN, SUB-TAB, TOGGLE/BUTTON =====
 
-local tabNames = {"Main", "Shop", "Performance", "Misc", "BuffSection", "Fruits Collection"}
+-- Danh sách tab lớn
+local mainTabs = {
+    {name = "Main", subTabs = {
+        {name = "Combat", toggles = {
+            {label = "Auto Farm", func = toggleAutoFarm},
+            {label = "Auto Boss", func = function(s) print("Auto Boss:", s) end}
+        }},
+        {name = "Movement", toggles = {
+            {label = "Fly", func = toggleFly},
+            {label = "Speed Hack", func = toggleSpeed}
+        }}
+    }},
+    {name = "Shop", subTabs = {
+        {name = "Buy", toggles = {
+            {label = "Auto Buy", func = function(s) print("Auto Buy:", s) end},
+            {label = "Auto Sell", func = function(s) print("Auto Sell:", s) end}
+        }}
+    }},
+    {name = "Performance", subTabs = {
+        {name = "Graphics", toggles = {
+            {label = "Low Graphics", func = function(s) 
+                workspace.GlobalShadows = not s
+                workspace.QualityLevel = s and 1 or 4
+            end},
+            {label = "High FPS", func = function(s) 
+                workspace.StreamingEnabled = s
+            end}
+        }}
+    }},
+    {name = "Misc", subTabs = {
+        {name = "Utilities", toggles = {
+            {label = "ESP", func = toggleESP},
+            {label = "Infinite Jump", func = function(s) 
+                if s then
+                    local j = game:GetService("UserInputService").JumpRequest:Connect(function()
+                        if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end
+                    end)
+                    _G.infiniteJumpConn = j
+                else
+                    if _G.infiniteJumpConn then _G.infiniteJumpConn:Disconnect() end
+                end
+            end}
+        }}
+    }},
+    {name = "BuffSection", subTabs = {
+        {name = "Buffs", toggles = {
+            {label = "Damage Buff", func = function(s) print("Damage Buff:", s) end},
+            {label = "Defense Buff", func = function(s) print("Defense Buff:", s) end}
+        }}
+    }},
+    {name = "Fruits Collection", subTabs = {
+        {name = "SelectFruits", toggles = {}},
+        {name = "All", toggles = {}},
+        {name = "AutoHarvest", toggles = {}},
+        {name = "AutoHarvestfruitselectedingarden", toggles = {}},
+        {name = "CollectHighValuetoLowValueFruit", toggles = {
+            {label = "Collect High to Low", func = function(s) print("Collect High to Low:", s) end}
+        }},
+        {name = "AutoHarvestAll", toggles = {}},
+        {name = "AutoHarvestall fruitsingarden", toggles = {}},
+        {name = "Night*****", toggles = {}},
+        {name = "StopHarvestIfInventoryFull", toggles = {
+            {label = "Stop Harvest", func = toggleStopHarvest}
+        }},
+        {name = "Auto Harvest", toggles = {
+            {label = "Auto Harvest", func = toggleHarvest}
+        }}
+    }}
+}
+
+-- Vị trí tab lớn
 local tabButtons = {}
-local contents = {}
+local contentFrames = {}
 
-for i, name in ipairs(tabNames) do
+-- Tạo các tab lớn
+for i, tabData in ipairs(mainTabs) do
     local btn = Instance.new("TextButton")
     btn.Parent = mainFrame
-    btn.Size = UDim2.new(0, 95, 0, 30)
-    btn.Position = UDim2.new(0, 10 + ((i-1) * 100), 0, 5)
+    btn.Size = UDim2.new(0, 110, 0, 30)
+    btn.Position = UDim2.new(0, 10 + ((i-1) * 115), 0, 5)
     btn.BackgroundColor3 = Color3.new(0.15, 0.15, 0.15)
     btn.BorderSizePixel = 0
     applyCorners(btn, 6)
-    btn.Text = name
+    btn.Text = tabData.name
     btn.TextColor3 = Color3.new(1, 1, 1)
     btn.Font = Enum.Font.GothamBold
     btn.TextSize = 12
     table.insert(tabButtons, btn)
 
+    -- Frame chứa nội dung của tab lớn (ScrollingFrame)
     local content = Instance.new("ScrollingFrame")
     content.Parent = mainFrame
-    content.Size = UDim2.new(1, -20, 0, 440)
+    content.Size = UDim2.new(1, -20, 0, 490)
     content.Position = UDim2.new(0, 10, 0, 45)
     content.BackgroundColor3 = Color3.new(0.05, 0.05, 0.05)
     content.BorderSizePixel = 0
@@ -312,56 +370,49 @@ for i, name in ipairs(tabNames) do
     content.Visible = false
     content.CanvasSize = UDim2.new(0, 0, 0, 0)
     content.ScrollBarThickness = 6
-    table.insert(contents, content)
+    table.insert(contentFrames, content)
 
-    -- Nội dung từng tab
-    if name == "Main" then
-        createSubTab(content, "Main", 5)
-        createToggle(content, "Auto Farm", 20, 45, false, toggleAutoFarm)
-        createToggle(content, "Auto Boss", 20, 80, false, function(s) print("Auto Boss:", s) end)
-        
-    elseif name == "Shop" then
-        createSubTab(content, "Shop", 5)
-        createToggle(content, "Auto Buy", 20, 45, false, function(s) print("Auto Buy:", s) end)
-        createToggle(content, "Auto Sell", 20, 80, false, function(s) print("Auto Sell:", s) end)
-        
-    elseif name == "Performance" then
-        createSubTab(content, "Performance", 5)
-        createToggle(content, "Low Graphics", 20, 45, false, function(s) 
-            game:GetService("Workspace").GlobalShadows = not s
-            game:GetService("Workspace").QualityLevel = s and 1 or 4
-        end)
-        createToggle(content, "High FPS", 20, 80, false, function(s) 
-            game:GetService("Workspace").StreamingEnabled = s
-        end)
-        
-    elseif name == "Misc" then
-        createSubTab(content, "Misc", 5)
-        createToggle(content, "ESP", 20, 45, false, toggleESP)
-        createToggle(content, "Speed Hack", 20, 80, false, toggleSpeed)
-        createToggle(content, "Fly", 20, 115, false, toggleFly)
-        
-    elseif name == "BuffSection" then
-        createSubTab(content, "BuffSection", 5)
-        createToggle(content, "Damage Buff", 20, 45, false, function(s) print("Damage Buff:", s) end)
-        createToggle(content, "Defense Buff", 20, 80, false, function(s) print("Defense Buff:", s) end)
-        
-    elseif name == "Fruits Collection" then
-        createSubTab(content, "SelectFruits", 5)
-        createSubTab(content, "All", 40)
-        createSubTab(content, "AutoHarvest", 75)
-        createSubTab(content, "AutoHarvestfruitselectedingarden", 110)
-        createToggle(content, "CollectHighValuetoLowValueFruit", 20, 145, false, function(s) print("Collect High to Low:", s) end)
-        createSubTab(content, "AutoHarvestAll", 180)
-        createSubTab(content, "AutoHarvestall fruitsingarden", 215)
-        createSubTab(content, "Night*****", 250)
-        createToggle(content, "StopHarvestIfInventoryFull", 20, 285, false, toggleStopHarvest)
-        createToggle(content, "Auto Harvest", 20, 320, false, toggleHarvest)
+    -- Tạo sub-tab bên trong
+    local subTabY = 5
+    for _, subData in ipairs(tabData.subTabs) do
+        -- Tạo khung sub-tab (có thể là một TextLabel hoặc Frame)
+        local subFrame = Instance.new("Frame")
+        subFrame.Parent = content
+        subFrame.Size = UDim2.new(1, -20, 0, 30)
+        subFrame.Position = UDim2.new(0, 10, 0, subTabY)
+        subFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
+        subFrame.BorderSizePixel = 0
+        applyCorners(subFrame, 6)
+
+        local subLabel = Instance.new("TextLabel")
+        subLabel.Parent = subFrame
+        subLabel.Size = UDim2.new(1, 0, 1, 0)
+        subLabel.BackgroundTransparency = 1
+        subLabel.Text = subData.name
+        subLabel.TextColor3 = Color3.new(0.8, 0.8, 0.8)
+        subLabel.TextXAlignment = Enum.TextXAlignment.Left
+        subLabel.Font = Enum.Font.GothamBold
+        subLabel.TextSize = 14
+
+        subTabY = subTabY + 35
+
+        -- Tạo các toggle/button cho sub-tab này
+        local toggleY = subTabY
+        for _, toggleData in ipairs(subData.toggles) do
+            createToggle(content, toggleData.label, 20, toggleY, false, toggleData.func)
+            toggleY = toggleY + 35
+        end
+        -- Cập nhật subTabY để sub-tab tiếp theo không bị đè
+        subTabY = toggleY + 5
     end
 
+    -- Cập nhật CanvasSize
+    content.CanvasSize = UDim2.new(0, 0, 0, subTabY + 20)
+
+    -- Sự kiện click tab
     btn.MouseButton1Click:Connect(function()
         for j, b in ipairs(tabButtons) do
-            contents[j].Visible = false
+            contentFrames[j].Visible = false
             b.BackgroundColor3 = Color3.new(0.15, 0.15, 0.15)
         end
         content.Visible = true
@@ -374,5 +425,8 @@ if #tabButtons > 0 then
     tabButtons[1]:Click()
 end
 
--- Teleport mẫu (gọi khi cần)
--- teleportToIsland(Vector3.new(1000, 50, 2000))
+-- Thêm vài button không toggle (ví dụ)
+-- Có thể thêm vào các sub-tab bằng cách chỉnh sửa cấu trúc, nhưng hiện tại đã có toggle.
+-- Để có button, ta có thể thêm vào phần subData một trường buttons.
+
+print("UI loaded - Night Hub")
