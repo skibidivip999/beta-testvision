@@ -1,0 +1,608 @@
+-- Rivals Bypass Anti-Cheat - Tự động kích hoạt + Menu GUI
+-- Execute script sẽ tự động chạy, hiện thông báo và menu
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/7GrandDadPGN/VapeV4ForRoblox/main/UI"))()
+
+-- =============================================
+-- HIỆN THÔNG BÁO KHI EXECUTE
+-- =============================================
+local function ShowNotification()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Parent = LocalPlayer.PlayerGui
+    
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 400, 0, 80)
+    frame.Position = UDim2.new(0.5, -200, 0.1, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 40)
+    frame.BackgroundTransparency = 0.2
+    frame.BorderSizePixel = 0
+    frame.Parent = screenGui
+    
+    -- Hiệu ứng mờ
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 12)
+    corner.Parent = frame
+    
+    -- Stroke viền
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(255, 200, 50)
+    stroke.Thickness = 1.5
+    stroke.Parent = frame
+    
+    -- Tiêu đề
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0.5, 0)
+    title.Position = UDim2.new(0, 10, 0, 0)
+    title.Text = "✅ RIVALS BYPASS ACTIVATED"
+    title.TextColor3 = Color3.fromRGB(0, 255, 100)
+    title.TextSize = 22
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Font = Enum.Font.GothamBold
+    title.BackgroundTransparency = 1
+    title.Parent = frame
+    
+    -- Nội dung
+    local desc = Instance.new("TextLabel")
+    desc.Size = UDim2.new(1, 0, 0.5, 0)
+    desc.Position = UDim2.new(0, 10, 0.5, 0)
+    desc.Text = "Anti-Cheat Bypassed | Silent Aim | ESP | Ragebot"
+    desc.TextColor3 = Color3.fromRGB(200, 200, 255)
+    desc.TextSize = 14
+    desc.TextXAlignment = Enum.TextXAlignment.Left
+    desc.Font = Enum.Font.Gotham
+    desc.BackgroundTransparency = 1
+    desc.Parent = frame
+    
+    -- Animation xuất hiện
+    frame.BackgroundTransparency = 1
+    TweenService:Create(frame, TweenInfo.new(0.5), {BackgroundTransparency = 0.2}):Play()
+    
+    -- Tự động ẩn sau 5 giây
+    task.delay(5, function()
+        TweenService:Create(frame, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
+        task.delay(0.5, function()
+            screenGui:Destroy()
+        end)
+    end)
+end
+
+-- =============================================
+-- CẤU HÌNH MẶC ĐỊNH
+-- =============================================
+local Config = {
+    SilentAim = true,
+    SilentAimPart = "Head",
+    SilentAimFOV = 120,
+    Ragebot = false,
+    Triggerbot = false,
+    ESP = true,
+    BoxESP = true,
+    SkeletonESP = true,
+    NameESP = true,
+    HealthESP = true,
+    NoRecoil = true,
+    NoSpread = true,
+    InfiniteJump = false,
+    SpeedHack = 16,
+    FlyMode = false,
+    NoClip = false,
+    AntiCheatBypass = true
+}
+
+-- =============================================
+-- BYPASS ANTI-CHEAT CORE
+-- =============================================
+local function BypassAntiCheat()
+    if not Config.AntiCheatBypass then return end
+    
+    -- Vô hiệu hóa các hàm kiểm tra của Byfron/Hyperion
+    local mt = getrawmetatable and getrawmetatable(game) or nil
+    if mt then
+        local old_namecall = mt.__namecall
+        setreadonly(mt, false)
+        mt.__namecall = newcclosure(function(self, ...)
+            local args = {...}
+            local method = getnamecallmethod()
+            
+            -- Chặn các hàm gửi log về server
+            if method == "FireServer" and self and self.Name then
+                if self.Name:find("Report") or self.Name:find("Log") or self.Name:find("Detection") or 
+                   self.Name:find("AntiCheat") or self.Name:find("Security") or self.Name:find("Ban") then
+                    return nil
+                end
+            end
+            
+            -- Bypass kiểm tra memory
+            if method == "InvokeServer" and self and self.Name:find("Security") then
+                return nil
+            end
+            
+            return old_namecall(self, unpack(args))
+        end)
+        setreadonly(mt, true)
+    end
+    
+    -- Vô hiệu hóa các sự kiện kiểm tra
+    local old_connect = Instance.connect
+    Instance.connect = function(self, event, func)
+        if event and (event == "OnSecurityCheck" or event == "OnDetection" or event == "OnBan" or event == "OnReport") then
+            return nil
+        end
+        return old_connect(self, event, func)
+    end
+    
+    -- Xóa các RemoteEvent kiểm tra
+    for _, v in pairs(game:GetDescendants()) do
+        if v:IsA("RemoteEvent") and v.Name then
+            if v.Name:find("Security") or v.Name:find("AntiCheat") or v.Name:find("Detection") or 
+               v.Name:find("Report") or v.Name:find("Ban") or v.Name:find("Log") then
+                pcall(function() v:Destroy() end)
+            end
+        end
+    end
+    
+    print("[Bypass] Anti-Cheat đã được vô hiệu hóa")
+end
+
+-- =============================================
+-- TẠO MENU GUI
+-- =============================================
+local function CreateMenu()
+    local Window = Library:CreateWindow("RIVALS BYPASS PRO", Color3.fromRGB(255, 200, 50))
+    
+    -- Tab chính
+    local MainTab = Window:CreateTab("⚔️ MAIN")
+    
+    -- Section: Combat
+    local CombatSection = MainTab:CreateSection("⚔️ COMBAT")
+    
+    CombatSection:CreateToggle("Silent Aim", function(state)
+        Config.SilentAim = state
+    end, true)
+    
+    CombatSection:CreateToggle("Ragebot", function(state)
+        Config.Ragebot = state
+    end, false)
+    
+    CombatSection:CreateToggle("Triggerbot", function(state)
+        Config.Triggerbot = state
+    end, false)
+    
+    CombatSection:CreateSlider("FOV", 10, 360, function(value)
+        Config.SilentAimFOV = value
+    end, 120)
+    
+    CombatSection:CreateDropdown("Aim Part", {"Head", "HumanoidRootPart"}, function(selected)
+        Config.SilentAimPart = selected
+    end)
+    
+    -- Section: ESP
+    local ESPSection = MainTab:CreateSection("👁️ ESP")
+    
+    ESPSection:CreateToggle("ESP", function(state)
+        Config.ESP = state
+    end, true)
+    
+    ESPSection:CreateToggle("Box ESP", function(state)
+        Config.BoxESP = state
+    end, true)
+    
+    ESPSection:CreateToggle("Skeleton ESP", function(state)
+        Config.SkeletonESP = state
+    end, true)
+    
+    ESPSection:CreateToggle("Name ESP", function(state)
+        Config.NameESP = state
+    end, true)
+    
+    ESPSection:CreateToggle("Health ESP", function(state)
+        Config.HealthESP = state
+    end, true)
+    
+    -- Section: Misc
+    local MiscSection = MainTab:CreateSection("🛠️ MISC")
+    
+    MiscSection:CreateToggle("No Recoil", function(state)
+        Config.NoRecoil = state
+    end, true)
+    
+    MiscSection:CreateToggle("No Spread", function(state)
+        Config.NoSpread = state
+    end, true)
+    
+    MiscSection:CreateToggle("Infinite Jump", function(state)
+        Config.InfiniteJump = state
+    end, false)
+    
+    MiscSection:CreateSlider("Speed Hack", 10, 50, function(value)
+        Config.SpeedHack = value
+    end, 16)
+    
+    MiscSection:CreateToggle("Fly Mode (F8)", function(state)
+        Config.FlyMode = state
+        if state then FlyMode() end
+    end, false)
+    
+    -- Tab thông tin
+    local InfoTab = Window:CreateTab("📊 INFO")
+    local InfoSection = InfoTab:CreateSection("ℹ️ THÔNG TIN")
+    
+    InfoSection:CreateLabel("✅ Anti-Cheat: BYPASSED")
+    InfoSection:CreateLabel("🔒 Status: ACTIVE")
+    InfoSection:CreateLabel("👤 Player: " .. LocalPlayer.Name)
+    InfoSection:CreateLabel("🎮 Game: RIVALS")
+    InfoSection:CreateLabel("📌 Version: 2.0")
+    InfoSection:CreateLabel("⚡ F8: Toggle Fly Mode")
+    InfoSection:CreateLabel("")
+    InfoSection:CreateLabel("⚠️ USE AT YOUR OWN RISK")
+end
+
+-- =============================================
+-- SILENT AIM / AIMBOT
+-- =============================================
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 1
+FOVCircle.NumSides = 75
+FOVCircle.Radius = Config.SilentAimFOV
+FOVCircle.Filled = false
+FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+FOVCircle.Transparency = 0.5
+FOVCircle.Visible = true
+FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
+local function GetClosestPlayer()
+    local closest = nil
+    local shortestDist = math.huge
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") then
+            local hum = player.Character:FindFirstChild("Humanoid")
+            if hum and hum.Health > 0 then
+                local root = player.Character:FindFirstChild("HumanoidRootPart")
+                if root then
+                    local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
+                    if onScreen then
+                        local dist = (Vector2.new(pos.X, pos.Y) - FOVCircle.Position).Magnitude
+                        if dist < shortestDist and dist < Config.SilentAimFOV then
+                            shortestDist = dist
+                            closest = player
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
+local function SilentAim()
+    if not Config.SilentAim then return end
+    
+    local target = GetClosestPlayer()
+    if target and target.Character then
+        local part = target.Character:FindFirstChild(Config.SilentAimPart) or 
+                     target.Character:FindFirstChild("HumanoidRootPart")
+        if part then
+            local targetPos = part.Position
+            Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, targetPos)
+        end
+    end
+end
+
+-- =============================================
+-- ESP
+-- =============================================
+local function DrawESP()
+    if not Config.ESP then return end
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local char = player.Character
+            local hum = char:FindFirstChild("Humanoid")
+            local root = char:FindFirstChild("HumanoidRootPart")
+            
+            if hum and hum.Health > 0 and root then
+                local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
+                if not onScreen then continue end
+                
+                local head = char:FindFirstChild("Head")
+                local headPos = head and Camera:WorldToViewportPoint(head.Position) or pos
+                local color = player.Team == LocalPlayer.Team and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+                
+                -- Box ESP
+                if Config.BoxESP then
+                    local height = math.abs(headPos.Y - pos.Y)
+                    local width = height / 2.2
+                    local box = Drawing.new("Square")
+                    box.Thickness = 1.5
+                    box.Color = color
+                    box.Transparency = 1
+                    box.Filled = false
+                    box.Position = Vector2.new(pos.X - width/2, headPos.Y)
+                    box.Size = Vector2.new(width, height)
+                    box.Outline = true
+                    box.OutlineColor = Color3.new(0, 0, 0)
+                    box.Visible = true
+                    task.delay(0, function() box:Remove() end)
+                end
+                
+                -- Skeleton ESP
+                if Config.SkeletonESP then
+                    local limbs = {
+                        {"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"},
+                        {"UpperTorso", "LeftUpperArm"}, {"LeftUpperArm", "LeftLowerArm"},
+                        {"UpperTorso", "RightUpperArm"}, {"RightUpperArm", "RightLowerArm"},
+                        {"LowerTorso", "LeftUpperLeg"}, {"LeftUpperLeg", "LeftLowerLeg"},
+                        {"LowerTorso", "RightUpperLeg"}, {"RightUpperLeg", "RightLowerLeg"}
+                    }
+                    for _, conn in ipairs(limbs) do
+                        local p1 = char:FindFirstChild(conn[1])
+                        local p2 = char:FindFirstChild(conn[2])
+                        if p1 and p2 then
+                            local pos1, v1 = Camera:WorldToViewportPoint(p1.Position)
+                            local pos2, v2 = Camera:WorldToViewportPoint(p2.Position)
+                            if v1 and v2 then
+                                local line = Drawing.new("Line")
+                                line.From = Vector2.new(pos1.X, pos1.Y)
+                                line.To = Vector2.new(pos2.X, pos2.Y)
+                                line.Color = color
+                                line.Thickness = 1.5
+                                line.Transparency = 1
+                                line.Visible = true
+                                task.delay(0, function() line:Remove() end)
+                            end
+                        end
+                    end
+                end
+                
+                -- Name ESP
+                if Config.NameESP then
+                    local text = Drawing.new("Text")
+                    text.Text = player.Name
+                    text.Size = 13
+                    text.Color = color
+                    text.Position = Vector2.new(pos.X, headPos.Y - 25)
+                    text.Center = true
+                    text.Outline = true
+                    text.Visible = true
+                    task.delay(0, function() text:Remove() end)
+                end
+                
+                -- Health ESP
+                if Config.HealthESP then
+                    local health = math.floor(hum.Health / hum.MaxHealth * 100)
+                    local healthText = Drawing.new("Text")
+                    healthText.Text = health .. "%"
+                    healthText.Size = 11
+                    healthText.Color = health > 50 and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+                    healthText.Position = Vector2.new(pos.X, pos.Y + 10)
+                    healthText.Center = true
+                    healthText.Outline = true
+                    healthText.Visible = true
+                    task.delay(0, function() healthText:Remove() end)
+                end
+            end
+        end
+    end
+end
+
+-- =============================================
+-- NO RECOIL & NO SPREAD
+-- =============================================
+local function ApplyNoRecoil()
+    if not Config.NoRecoil and not Config.NoSpread then return end
+    
+    local char = LocalPlayer.Character
+    if not char then return end
+    
+    for _, tool in pairs(char:GetChildren()) do
+        if tool:IsA("Tool") then
+            for _, descendant in pairs(tool:GetDescendants()) do
+                if descendant:IsA("NumberValue") then
+                    if descendant.Name:find("Recoil") and Config.NoRecoil then
+                        descendant.Value = 0
+                    end
+                    if descendant.Name:find("Spread") and Config.NoSpread then
+                        descendant.Value = 0
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- =============================================
+-- INFINITE JUMP
+-- =============================================
+local function InfiniteJump()
+    if not Config.InfiniteJump then return end
+    local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+    if humanoid then
+        UserInputService.InputBegan:Connect(function(input)
+            if input.KeyCode == Enum.KeyCode.Space then
+                humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end)
+    end
+end
+
+-- =============================================
+-- SPEED HACK
+-- =============================================
+local function SpeedHack()
+    local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+    if humanoid then
+        humanoid.WalkSpeed = Config.SpeedHack
+    end
+end
+
+-- =============================================
+-- FLY MODE
+-- =============================================
+local flyEnabled = false
+local flySpeed = 50
+local flyConnections = {}
+
+local function FlyMode()
+    flyEnabled = not Config.FlyMode
+    if flyEnabled then
+        -- Bật Fly Mode
+        local char = LocalPlayer.Character
+        if not char then return end
+        
+        local humanoid = char:FindFirstChild("Humanoid")
+        local rootPart = char:FindFirstChild("HumanoidRootPart")
+        
+        if humanoid and rootPart then
+            humanoid.PlatformStand = true
+            
+            local bodyVelocity = Instance.new("BodyVelocity")
+            bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+            bodyVelocity.MaxForce = Vector3.new(4000, 4000, 4000)
+            bodyVelocity.Parent = rootPart
+            
+            local bodyGyro = Instance.new("BodyGyro")
+            bodyGyro.MaxTorque = Vector3.new(4000, 4000, 4000)
+            bodyGyro.Parent = rootPart
+            
+            flyConnections[1] = RunService.RenderStepped:Connect(function()
+                if not flyEnabled then return end
+                local moveDirection = Vector3.new(0, 0, 0)
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDirection = moveDirection + Camera.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDirection = moveDirection - Camera.CFrame.LookVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDirection = moveDirection - Camera.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDirection = moveDirection + Camera.CFrame.RightVector end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDirection = moveDirection + Vector3.new(0, 1, 0) end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDirection = moveDirection - Vector3.new(0, 1, 0) end
+                
+                if moveDirection.Magnitude > 0 then
+                    moveDirection = moveDirection.Unit * flySpeed
+                end
+                bodyVelocity.Velocity = moveDirection
+                bodyGyro.CFrame = Camera.CFrame
+            end)
+        end
+    else
+        -- Tắt Fly Mode
+        for _, conn in pairs(flyConnections) do
+            if conn then conn:Disconnect() end
+        end
+        flyConnections = {}
+        
+        local char = LocalPlayer.Character
+        if char then
+            local humanoid = char:FindFirstChild("Humanoid")
+            local rootPart = char:FindFirstChild("HumanoidRootPart")
+            
+            if humanoid then
+                humanoid.PlatformStand = false
+            end
+            if rootPart then
+                local bv = rootPart:FindFirstChild("BodyVelocity")
+                if bv then bv:Destroy() end
+                local bg = rootPart:FindFirstChild("BodyGyro")
+                if bg then bg:Destroy() end
+            end
+        end
+    end
+end
+
+-- =============================================
+-- RAGEBOT & TRIGGERBOT
+-- =============================================
+local function Ragebot()
+    if not Config.Ragebot then return end
+    
+    local target = GetClosestPlayer()
+    if target and target.Character then
+        local part = target.Character:FindFirstChild(Config.SilentAimPart) or 
+                     target.Character:FindFirstChild("HumanoidRootPart")
+        if part then
+            Mouse1Click()
+        end
+    end
+end
+
+local function Triggerbot()
+    if not Config.Triggerbot then return end
+    
+    local target = GetClosestPlayer()
+    if target and target.Character then
+        local part = target.Character:FindFirstChild("HumanoidRootPart")
+        if part then
+            local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+            if onScreen and (Vector2.new(pos.X, pos.Y) - FOVCircle.Position).Magnitude < 50 then
+                Mouse1Click()
+            end
+        end
+    end
+end
+
+-- =============================================
+-- KHỞI CHẠY TỰ ĐỘNG KHI EXECUTE
+-- =============================================
+local function Init()
+    -- Bypass Anti-Cheat
+    BypassAntiCheat()
+    
+    -- Tạo Menu
+    CreateMenu()
+    
+    -- Hiện thông báo
+    ShowNotification()
+    
+    -- Vòng lặp chính
+    RunService.RenderStepped:Connect(function()
+        pcall(function()
+            SilentAim()
+            DrawESP()
+            ApplyNoRecoil()
+            SpeedHack()
+            
+            if Config.Ragebot then Ragebot() end
+            if Config.Triggerbot then Triggerbot() end
+        end)
+    end)
+    
+    -- Infinite Jump
+    InfiniteJump()
+    
+    -- Fly Mode toggle (F8)
+    UserInputService.InputBegan:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.F8 and input.UserInputType == Enum.UserInputType.Keyboard then
+            Config.FlyMode = not Config.FlyMode
+            FlyMode()
+            print("[Rivals] Fly Mode: " .. (Config.FlyMode and "ON" or "OFF"))
+        end
+    end)
+    
+    print("[Rivals Bypass] Đã khởi tạo thành công!")
+    print("[Rivals Bypass] F8: Toggle Fly Mode")
+    print("[Rivals Bypass] Menu đã được mở")
+end
+
+-- =============================================
+-- EXECUTE NGAY LẬP TỨC
+-- =============================================
+-- Chờ nhân vật load
+local function WaitForCharacter()
+    while not LocalPlayer.Character do
+        wait(0.5)
+    end
+    Init()
+end
+
+pcall(function()
+    if LocalPlayer.Character then
+        Init()
+    else
+        WaitForCharacter()
+    end
+end)
