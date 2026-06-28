@@ -1,432 +1,251 @@
--- UI Night Hub - Tab lớn, bên trong là tab nhỏ (sub-tab), dưới sub-tab là toggle/button có chức năng.
--- Kéo thả, toggle ẩn/hiện toàn bộ GUI, bo góc.
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
-local player = game.Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local humanoid = character:FindFirstChild("Humanoid")
-local root = character:FindFirstChild("HumanoidRootPart")
-local workspace = game:GetService("Workspace")
-local runService = game:GetService("RunService")
-local virtualInput = game:GetService("VirtualInputManager")
-local userInput = game:GetService("UserInputService")
-local mouse = player:GetMouse()
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
-local screenGui = Instance.new("ScreenGui")
-screenGui.Parent = game.CoreGui
-screenGui.Name = "NightHubUI"
-screenGui.ResetOnSpawn = false
+-- CẤU HÌNH BAN ĐẦU
+local AimbotEnabled = true
+local TeamCheck = true
+local ForceFieldCheck = true
+local FovRadius = 150 -- Kích thước vòng tròn mặc định
+local MaxFov = 400    -- Kích thước vòng tròn tối đa khi kéo thanh cuộn
 
-local function applyCorners(guiObj, radius)
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, radius or 10)
-    corner.Parent = guiObj
-end
+------------------------------------------------------------------------
+-- 1. TỰ ĐỘNG TẠO GIAO DIỆN (UI CREATION)
+------------------------------------------------------------------------
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "aimbot test"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-local mainFrame = Instance.new("Frame")
-mainFrame.Parent = screenGui
-mainFrame.Size = UDim2.new(0, 750, 0, 580)
-mainFrame.Position = UDim2.new(0.5, -375, 0.5, -290)
-mainFrame.BackgroundColor3 = Color3.new(0, 0, 0)
-mainFrame.BackgroundTransparency = 0
-mainFrame.BorderSizePixel = 0
-applyCorners(mainFrame, 12)
+-- Vòng tròn FOV
+local FOVCircle = Instance.new("ImageLabel")
+FOVCircle.Name = "FOVCircle"
+FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+FOVCircle.BackgroundTransparency = 1
+FOVCircle.Image = "rbxassetid://3570695787"
+FOVCircle.ImageColor3 = Color3.fromRGB(255, 0, 0)
+FOVCircle.Size = UDim2.new(0, FovRadius * 2, 0, FovRadius * 2)
+FOVCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
+FOVCircle.Parent = ScreenGui
 
--- Nút toggle GUI (ẩn/hiện toàn bộ)
-local toggleBtn = Instance.new("ImageButton")
-toggleBtn.Parent = screenGui
-toggleBtn.Size = UDim2.new(0, 40, 0, 40)
-toggleBtn.Position = UDim2.new(0, 10, 0, 10)
-toggleBtn.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
-toggleBtn.BorderSizePixel = 0
-applyCorners(toggleBtn, 20)
-toggleBtn.Image = "rbxassetid://6031091078"
-toggleBtn.ImageColor3 = Color3.new(1, 1, 1)
+-- Menu Bảng Điều Khiển
+local MainMenu = Instance.new("Frame")
+MainMenu.Name = "MainMenu"
+MainMenu.Size = UDim2.new(0, 220, 0, 180)
+MainMenu.Position = UDim2.new(0, 50, 0, 50)
+MainMenu.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MainMenu.BorderSizePixel = 0
+MainMenu.Active = true
+MainMenu.Draggable = true -- Cho phép kéo menu
+MainMenu.Parent = ScreenGui
 
-local guiVisible = true
-toggleBtn.MouseButton1Click:Connect(function()
-    guiVisible = not guiVisible
-    mainFrame.Visible = guiVisible
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = MainMenu
+
+-- Tiêu đề Menu
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 35)
+Title.BackgroundTransparency = 1
+Title.Text = "AIMBOT SETTINGS"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 16
+Title.TextXAlignment = Enum.TextXAlignment.Left -- Chuyển sang trái để nhường chỗ cho nút X
+Title.Position = UDim2.new(0, 15, 0, 0)
+Title.Parent = MainMenu
+
+-- NÚT TẮT UI (Close Button)
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Name = "CloseButton"
+CloseBtn.Size = UDim2.new(0, 25, 0, 25)
+CloseBtn.Position = UDim2.new(1, -35, 0, 5) -- Nằm ở góc trên bên phải thanh tiêu đề
+CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.Font = Enum.Font.SourceSansBold
+CloseBtn.TextSize = 14
+CloseBtn.Parent = MainMenu
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 5)
+CloseCorner.Parent = CloseBtn
+
+-- Nút Bật/Tắt Aimbot
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0, 180, 0, 30)
+ToggleBtn.Position = UDim2.new(0, 20, 0, 45)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+ToggleBtn.Text = "Aimbot: ON"
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.Font = Enum.Font.SourceSansBold
+ToggleBtn.TextSize = 14
+ToggleBtn.Parent = MainMenu
+
+local BtnCorner = Instance.new("UICorner")
+BtnCorner.CornerRadius = UDim.new(0, 5)
+BtnCorner.Parent = ToggleBtn
+
+-- Label cho Thanh Kéo Slider
+local SliderLabel = Instance.new("TextLabel")
+SliderLabel.Size = UDim2.new(0, 180, 0, 20)
+SliderLabel.Position = UDim2.new(0, 20, 0, 90)
+SliderLabel.BackgroundTransparency = 1
+SliderLabel.Text = "FOV Size: " .. FovRadius
+SliderLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+SliderLabel.Font = Enum.Font.SourceSans
+SliderLabel.TextSize = 14
+SliderLabel.TextXAlignment = Enum.TextXAlignment.Left
+SliderLabel.Parent = MainMenu
+
+-- Thanh Kéo Slider (Nền)
+local SliderBar = Instance.new("Frame")
+SliderBar.Size = UDim2.new(0, 180, 0, 6)
+SliderBar.Position = UDim2.new(0, 20, 0, 120)
+SliderBar.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+SliderBar.BorderSizePixel = 0
+SliderBar.Parent = MainMenu
+
+-- Cục Kéo Slider
+local SliderButton = Instance.new("TextButton")
+SliderButton.Size = UDim2.new(0, 14, 0, 14)
+SliderButton.AnchorPoint = Vector2.new(0.5, 0.5)
+local initialXScale = FovRadius / MaxFov
+SliderButton.Position = UDim2.new(initialXScale, 0, 0.5, 0)
+SliderButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+SliderButton.Text = ""
+SliderButton.Parent = SliderBar
+
+local SliderCorner = Instance.new("UICorner")
+SliderCorner.CornerRadius = UDim.new(1, 0)
+SliderCorner.Parent = SliderButton
+
+
+------------------------------------------------------------------------
+-- 2. LOGIC ĐIỀU KHIỂN UI (INTERACTION LOGIC)
+------------------------------------------------------------------------
+
+-- Xử lý nút X để đóng/tắt UI hoàn toàn
+CloseBtn.MouseButton1Click:Connect(function()
+	MainMenu.Visible = false
+	FOVCircle.Visible = false
+	AimbotEnabled = false -- Tắt luôn aimbot khi đóng UI cho an toàn
 end)
 
--- Kéo thả GUI
+-- Thay đổi màu nút X khi rê chuột qua tạo hiệu ứng mượt mà
+CloseBtn.MouseEnter:Connect(function()
+	CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+end)
+CloseBtn.MouseLeave:Connect(function()
+	CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+end)
+
+-- Xử lý nút Bật/Tắt Aimbot
+ToggleBtn.MouseButton1Click:Connect(function()
+	AimbotEnabled = not AimbotEnabled
+	if AimbotEnabled then
+		ToggleBtn.Text = "Aimbot: ON"
+		ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+		FOVCircle.Visible = true
+	else
+		ToggleBtn.Text = "Aimbot: OFF"
+		ToggleBtn.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
+		FOVCircle.Visible = false
+	end
+end)
+
+-- Xử lý kéo thanh Slider để chỉnh kích thước vòng tròn FOV
 local dragging = false
-local dragStartPos, dragStartMouse
 
-mainFrame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStartPos = mainFrame.Position
-        dragStartMouse = Vector2.new(mouse.X, mouse.Y)
-    end
+SliderButton.MouseButton1Down:Connect(function()
+	dragging = true
 end)
 
-mainFrame.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-    end
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = false
+	end
 end)
 
-runService.RenderStepped:Connect(function()
-    if dragging then
-        local delta = Vector2.new(mouse.X, mouse.Y) - dragStartMouse
-        mainFrame.Position = UDim2.new(
-            dragStartPos.X.Scale,
-            dragStartPos.X.Offset + delta.X,
-            dragStartPos.Y.Scale,
-            dragStartPos.Y.Offset + delta.Y
-        )
-    end
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local barAbsolutePos = SliderBar.AbsolutePosition
+		local barAbsoluteSize = SliderBar.AbsoluteSize
+		local mouseX = input.Position.X
+		
+		local scale = (mouseX - barAbsolutePos.X) / barAbsoluteSize.X
+		scale = math.clamp(scale, 0, 1)
+		
+		SliderButton.Position = UDim2.new(scale, 0, 0.5, 0)
+		
+		FovRadius = math.max(10, math.floor(scale * MaxFov))
+		SliderLabel.Text = "FOV Size: " .. FovRadius
+		
+		if MainMenu.Visible then -- Chỉ cập nhật kích thước vòng tròn nếu UI đang mở
+			FOVCircle.Size = UDim2.new(0, FovRadius * 2, 0, FovRadius * 2)
+		end
+	end
 end)
 
--- Lưu trạng thái toggle
-local toggleStates = {}
 
--- Tạo toggle có chức năng
-local function createToggle(parent, label, xPos, yPos, defaultState, func)
-    local frame = Instance.new("Frame")
-    frame.Parent = parent
-    frame.Size = UDim2.new(0, 220, 0, 30)
-    frame.Position = UDim2.new(0, xPos, 0, yPos)
-    frame.BackgroundTransparency = 1
+------------------------------------------------------------------------
+-- 3. LOGIC AIMBOT TRONG VÒNG TRÒN FOV
+------------------------------------------------------------------------
 
-    local labelObj = Instance.new("TextLabel")
-    labelObj.Parent = frame
-    labelObj.Size = UDim2.new(0.6, 0, 1, 0)
-    labelObj.BackgroundTransparency = 1
-    labelObj.Text = label
-    labelObj.TextColor3 = Color3.new(1, 1, 1)
-    labelObj.TextXAlignment = Enum.TextXAlignment.Left
-    labelObj.Font = Enum.Font.Gotham
-    labelObj.TextSize = 13
+local function getClosestPlayerToCrosshair()
+	local closestPlayer = nil
+	local shortestDistance = FovRadius
+	local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
 
-    local btn = Instance.new("ImageButton")
-    btn.Parent = frame
-    btn.Size = UDim2.new(0, 50, 0, 25)
-    btn.Position = UDim2.new(0.7, 0, 0, 2)
-    btn.BackgroundColor3 = defaultState and Color3.new(0, 0.8, 0) or Color3.new(0.3, 0.3, 0.3)
-    btn.BorderSizePixel = 0
-    applyCorners(btn, 12)
-    btn.Image = "rbxassetid://6031091078"
-    btn.ImageColor3 = Color3.new(1, 1, 1)
+	if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+		return nil
+	end
 
-    local state = defaultState or false
-    toggleStates[label] = state
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
+			
+			if TeamCheck and player.Team == LocalPlayer.Team and player.Team ~= nil then
+				continue
+			end
 
-    btn.MouseButton1Click:Connect(function()
-        state = not state
-        toggleStates[label] = state
-        btn.BackgroundColor3 = state and Color3.new(0, 0.8, 0) or Color3.new(0.3, 0.3, 0.3)
-        if func then
-            func(state)
-        end
-    end)
+			if ForceFieldCheck and player.Character:FindFirstChildOfClass("ForceField") then
+				continue
+			end
 
-    return {btn = btn, state = state, setState = function(newState)
-        state = newState
-        toggleStates[label] = state
-        btn.BackgroundColor3 = state and Color3.new(0, 0.8, 0) or Color3.new(0.3, 0.3, 0.3)
-        if func then func(state) end
-    end}
+			local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+			if humanoid and humanoid.Health > 0 then
+				local head = player.Character.Head
+				local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
+				
+				if onScreen then
+					local distanceToCenter = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+					
+					if distanceToCenter < shortestDistance then
+						shortestDistance = distanceToCenter
+						closestPlayer = player
+					end
+				end
+			end
+		end
+	end
+	return closestPlayer
 end
 
--- Tạo button (không toggle, chỉ click)
-local function createButton(parent, label, xPos, yPos, callback)
-    local btn = Instance.new("TextButton")
-    btn.Parent = parent
-    btn.Size = UDim2.new(0, 120, 0, 30)
-    btn.Position = UDim2.new(0, xPos, 0, yPos)
-    btn.BackgroundColor3 = Color3.new(0.3, 0.3, 0.3)
-    btn.BorderSizePixel = 0
-    applyCorners(btn, 8)
-    btn.Text = label
-    btn.TextColor3 = Color3.new(1, 1, 1)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 13
-    btn.MouseButton1Click:Connect(callback or function() end)
-    return btn
-end
+RunService.RenderStepped:Connect(function()
+	local screenCenter = UDim2.new(0.5, 0, 0.5, 0)
+	if FOVCircle.Position ~= screenCenter then
+		FOVCircle.Position = screenCenter
+	end
 
--- ===== CHỨC NĂNG =====
-
--- Auto Farm NPC
-local autoFarmRunning = false
-local farmConnection = nil
-local function toggleAutoFarm(state)
-    autoFarmRunning = state
-    if farmConnection then farmConnection:Disconnect() farmConnection = nil end
-    if state then
-        farmConnection = runService.Heartbeat:Connect(function()
-            if not character or not root then return end
-            local nearest = nil
-            local dist = math.huge
-            for _, v in pairs(workspace:GetChildren()) do
-                if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
-                    if v.Name ~= player.Name and v:FindFirstChild("Humanoid").Health > 0 then
-                        local mag = (root.Position - v.HumanoidRootPart.Position).Magnitude
-                        if mag < dist and mag < 100 then
-                            dist = mag
-                            nearest = v
-                        end
-                    end
-                end
-            end
-            if nearest then
-                root.CFrame = nearest.HumanoidRootPart.CFrame * CFrame.new(0, 0, -3)
-                virtualInput:SendKeyEvent(true, "Q", false, nil)
-                task.wait(0.3)
-                virtualInput:SendKeyEvent(false, "Q", false, nil)
-            end
-        end)
-    end
-end
-
--- ESP
-local espObjects = {}
-local espRunning = false
-local function toggleESP(state)
-    espRunning = state
-    if not state then
-        for _, v in pairs(espObjects) do v:Destroy() end
-        espObjects = {}
-        return
-    end
-    espObjects = {}
-    for _, v in pairs(workspace:GetChildren()) do
-        if v:IsA("Model") and v:FindFirstChild("Humanoid") and v.Name ~= player.Name then
-            local bill = Instance.new("BillboardGui")
-            bill.Parent = v
-            bill.Size = UDim2.new(0, 200, 0, 50)
-            bill.Adornee = v:FindFirstChild("HumanoidRootPart") or v.PrimaryPart
-            local label = Instance.new("TextLabel", bill)
-            label.Text = v.Name
-            label.TextColor3 = Color3.new(1, 0, 0)
-            label.Size = UDim2.new(1, 0, 1, 0)
-            label.BackgroundTransparency = 1
-            table.insert(espObjects, bill)
-        end
-    end
-end
-
--- Fly
-local flyRunning = false
-local flyConnection = nil
-local function toggleFly(state)
-    flyRunning = state
-    if flyConnection then flyConnection:Disconnect() flyConnection = nil end
-    if state and character and humanoid then
-        humanoid.PlatformStand = true
-        flyConnection = runService.Heartbeat:Connect(function()
-            if not character or not root then return end
-            local moveDirection = Vector3.new()
-            if userInput:IsKeyDown(Enum.KeyCode.W) then moveDirection = moveDirection + workspace.CurrentCamera.CFrame.LookVector end
-            if userInput:IsKeyDown(Enum.KeyCode.S) then moveDirection = moveDirection - workspace.CurrentCamera.CFrame.LookVector end
-            if userInput:IsKeyDown(Enum.KeyCode.A) then moveDirection = moveDirection - workspace.CurrentCamera.CFrame.RightVector end
-            if userInput:IsKeyDown(Enum.KeyCode.D) then moveDirection = moveDirection + workspace.CurrentCamera.CFrame.RightVector end
-            if moveDirection.Magnitude > 0 then
-                moveDirection = moveDirection.Unit * 50
-                root.Velocity = Vector3.new(moveDirection.X, root.Velocity.Y, moveDirection.Z)
-            end
-            if userInput:IsKeyDown(Enum.KeyCode.Space) then
-                root.Velocity = Vector3.new(root.Velocity.X, 50, root.Velocity.Z)
-            end
-            if userInput:IsKeyDown(Enum.KeyCode.LeftShift) then
-                root.Velocity = Vector3.new(root.Velocity.X, -50, root.Velocity.Z)
-            end
-        end)
-    elseif not state and character and humanoid then
-        humanoid.PlatformStand = false
-    end
-end
-
--- Speed Hack
-local speedRunning = false
-local function toggleSpeed(state)
-    speedRunning = state
-    if character and humanoid then
-        humanoid.WalkSpeed = state and 50 or 16
-    end
-end
-
--- Auto Harvest
-local harvestRunning = false
-local function toggleHarvest(state)
-    harvestRunning = state
-    print("Auto Harvest:", state)
-end
-
--- Stop Harvest If Inventory Full
-local stopHarvestRunning = false
-local function toggleStopHarvest(state)
-    stopHarvestRunning = state
-    print("Stop Harvest If Inventory Full:", state)
-end
-
--- Teleport function (ví dụ)
-local function teleportToIsland(pos)
-    if root then
-        root.CFrame = CFrame.new(pos)
-    end
-end
-
--- ===== TẠO UI VỚI TAB LỚN, SUB-TAB, TOGGLE/BUTTON =====
-
--- Danh sách tab lớn
-local mainTabs = {
-    {name = "Main", subTabs = {
-        {name = "Combat", toggles = {
-            {label = "Auto Farm", func = toggleAutoFarm},
-            {label = "Auto Boss", func = function(s) print("Auto Boss:", s) end}
-        }},
-        {name = "Movement", toggles = {
-            {label = "Fly", func = toggleFly},
-            {label = "Speed Hack", func = toggleSpeed}
-        }}
-    }},
-    {name = "Shop", subTabs = {
-        {name = "Buy", toggles = {
-            {label = "Auto Buy", func = function(s) print("Auto Buy:", s) end},
-            {label = "Auto Sell", func = function(s) print("Auto Sell:", s) end}
-        }}
-    }},
-    {name = "Performance", subTabs = {
-        {name = "Graphics", toggles = {
-            {label = "Low Graphics", func = function(s) 
-                workspace.GlobalShadows = not s
-                workspace.QualityLevel = s and 1 or 4
-            end},
-            {label = "High FPS", func = function(s) 
-                workspace.StreamingEnabled = s
-            end}
-        }}
-    }},
-    {name = "Misc", subTabs = {
-        {name = "Utilities", toggles = {
-            {label = "ESP", func = toggleESP},
-            {label = "Infinite Jump", func = function(s) 
-                if s then
-                    local j = game:GetService("UserInputService").JumpRequest:Connect(function()
-                        if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end
-                    end)
-                    _G.infiniteJumpConn = j
-                else
-                    if _G.infiniteJumpConn then _G.infiniteJumpConn:Disconnect() end
-                end
-            end}
-        }}
-    }},
-    {name = "BuffSection", subTabs = {
-        {name = "Buffs", toggles = {
-            {label = "Damage Buff", func = function(s) print("Damage Buff:", s) end},
-            {label = "Defense Buff", func = function(s) print("Defense Buff:", s) end}
-        }}
-    }},
-    {name = "Fruits Collection", subTabs = {
-        {name = "SelectFruits", toggles = {}},
-        {name = "All", toggles = {}},
-        {name = "AutoHarvest", toggles = {}},
-        {name = "AutoHarvestfruitselectedingarden", toggles = {}},
-        {name = "CollectHighValuetoLowValueFruit", toggles = {
-            {label = "Collect High to Low", func = function(s) print("Collect High to Low:", s) end}
-        }},
-        {name = "AutoHarvestAll", toggles = {}},
-        {name = "AutoHarvestall fruitsingarden", toggles = {}},
-        {name = "Night*****", toggles = {}},
-        {name = "StopHarvestIfInventoryFull", toggles = {
-            {label = "Stop Harvest", func = toggleStopHarvest}
-        }},
-        {name = "Auto Harvest", toggles = {
-            {label = "Auto Harvest", func = toggleHarvest}
-        }}
-    }}
-}
-
--- Vị trí tab lớn
-local tabButtons = {}
-local contentFrames = {}
-
--- Tạo các tab lớn
-for i, tabData in ipairs(mainTabs) do
-    local btn = Instance.new("TextButton")
-    btn.Parent = mainFrame
-    btn.Size = UDim2.new(0, 110, 0, 30)
-    btn.Position = UDim2.new(0, 10 + ((i-1) * 115), 0, 5)
-    btn.BackgroundColor3 = Color3.new(0.15, 0.15, 0.15)
-    btn.BorderSizePixel = 0
-    applyCorners(btn, 6)
-    btn.Text = tabData.name
-    btn.TextColor3 = Color3.new(1, 1, 1)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 12
-    table.insert(tabButtons, btn)
-
-    -- Frame chứa nội dung của tab lớn (ScrollingFrame)
-    local content = Instance.new("ScrollingFrame")
-    content.Parent = mainFrame
-    content.Size = UDim2.new(1, -20, 0, 490)
-    content.Position = UDim2.new(0, 10, 0, 45)
-    content.BackgroundColor3 = Color3.new(0.05, 0.05, 0.05)
-    content.BorderSizePixel = 0
-    applyCorners(content, 8)
-    content.Visible = false
-    content.CanvasSize = UDim2.new(0, 0, 0, 0)
-    content.ScrollBarThickness = 6
-    table.insert(contentFrames, content)
-
-    -- Tạo sub-tab bên trong
-    local subTabY = 5
-    for _, subData in ipairs(tabData.subTabs) do
-        -- Tạo khung sub-tab (có thể là một TextLabel hoặc Frame)
-        local subFrame = Instance.new("Frame")
-        subFrame.Parent = content
-        subFrame.Size = UDim2.new(1, -20, 0, 30)
-        subFrame.Position = UDim2.new(0, 10, 0, subTabY)
-        subFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
-        subFrame.BorderSizePixel = 0
-        applyCorners(subFrame, 6)
-
-        local subLabel = Instance.new("TextLabel")
-        subLabel.Parent = subFrame
-        subLabel.Size = UDim2.new(1, 0, 1, 0)
-        subLabel.BackgroundTransparency = 1
-        subLabel.Text = subData.name
-        subLabel.TextColor3 = Color3.new(0.8, 0.8, 0.8)
-        subLabel.TextXAlignment = Enum.TextXAlignment.Left
-        subLabel.Font = Enum.Font.GothamBold
-        subLabel.TextSize = 14
-
-        subTabY = subTabY + 35
-
-        -- Tạo các toggle/button cho sub-tab này
-        local toggleY = subTabY
-        for _, toggleData in ipairs(subData.toggles) do
-            createToggle(content, toggleData.label, 20, toggleY, false, toggleData.func)
-            toggleY = toggleY + 35
-        end
-        -- Cập nhật subTabY để sub-tab tiếp theo không bị đè
-        subTabY = toggleY + 5
-    end
-
-    -- Cập nhật CanvasSize
-    content.CanvasSize = UDim2.new(0, 0, 0, subTabY + 20)
-
-    -- Sự kiện click tab
-    btn.MouseButton1Click:Connect(function()
-        for j, b in ipairs(tabButtons) do
-            contentFrames[j].Visible = false
-            b.BackgroundColor3 = Color3.new(0.15, 0.15, 0.15)
-        end
-        content.Visible = true
-        btn.BackgroundColor3 = Color3.new(0.4, 0.4, 0.4)
-    end)
-end
-
--- Mở tab đầu tiên
-if #tabButtons > 0 then
-    tabButtons[1]:Click()
-end
-
--- Thêm vài button không toggle (ví dụ)
--- Có thể thêm vào các sub-tab bằng cách chỉnh sửa cấu trúc, nhưng hiện tại đã có toggle.
--- Để có button, ta có thể thêm vào phần subData một trường buttons.
-
-print("UI loaded - Night Hub")
+	-- Logic ngắm mục tiêu (Chỉ chạy khi Menu UI đang hiển thị và Aimbot được bật)
+	if AimbotEnabled and MainMenu.Visible then
+		local target = getClosestPlayerToCrosshair()
+		if target and target.Character and target.Character:FindFirstChild("Head") then
+			local targetHeadPos = target.Character.Head.Position
+			Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, targetHeadPos)
+		end
+	end
+end)
