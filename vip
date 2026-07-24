@@ -1,251 +1,410 @@
+--!strict
+--[[
+	QuestTracker.client.luau
+
+	Widget theo dõi nhiệm vụ dạng "pill" giống ảnh mẫu:
+	  - Chấm tròn xanh (trạng thái) nhấp nháy phát sáng bên trái
+	  - Avatar THẬT của player (lấy qua Players:GetUserThumbnailAsync)
+	  - Text nhiệm vụ, ví dụ "Killing Dough king to get Mirror"
+
+	Hành vi:
+	  1) Vị trí pill CỐ ĐỊNH, người chơi không kéo đi lung tung được.
+	  2) Chỉ có một cử chỉ: giữ và KÉO XUỐNG. Nếu kéo đủ xa, pill sẽ
+	     "bung" ra thành thẻ (card) kích thước cố định, hiện thêm
+	     thông tin (icon, tiêu đề, mô tả) do bạn tự điền trong QUEST_DATA.
+	  3) Kéo lên (hoặc bấm nút thu gọn) để đóng thẻ, trở lại pill nhỏ.
+
+	Đặt file trong StarterPlayer > StarterPlayerScripts.
+]]
+
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 
--- CẤU HÌNH BAN ĐẦU
-local AimbotEnabled = true
-local TeamCheck = true
-local ForceFieldCheck = true
-local FovRadius = 150 -- Kích thước vòng tròn mặc định
-local MaxFov = 400    -- Kích thước vòng tròn tối đa khi kéo thanh cuộn
+----------------------------------------------------------------
+-- 1. DỮ LIỆU BẠN TỰ ĐIỀN — đổi nội dung ở đây cho từng nhiệm vụ/vật phẩm
+----------------------------------------------------------------
 
-------------------------------------------------------------------------
--- 1. TỰ ĐỘNG TẠO GIAO DIỆN (UI CREATION)
-------------------------------------------------------------------------
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "aimbot test"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+local QUEST_DATA = {
+	statusOnline = true, -- true = chấm xanh phát sáng, false = chấm đỏ tĩnh
+	pillText = "Killing Dough king to get Mirror",
 
--- Vòng tròn FOV
-local FOVCircle = Instance.new("ImageLabel")
-FOVCircle.Name = "FOVCircle"
-FOVCircle.AnchorPoint = Vector2.new(0.5, 0.5)
-FOVCircle.BackgroundTransparency = 1
-FOVCircle.Image = "rbxassetid://3570695787"
-FOVCircle.ImageColor3 = Color3.fromRGB(255, 0, 0)
-FOVCircle.Size = UDim2.new(0, FovRadius * 2, 0, FovRadius * 2)
-FOVCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
-FOVCircle.Parent = ScreenGui
+	itemIconId = "rbxassetid://0", -- thay bằng asset id icon của bạn
+	itemTitle = "Mirror Fractal",
+	itemDescription = "The Mirror Fractal is a mysterious relic with a shimmering, "
+		.. "mirror-like surface that reflects light in strange ways. It is said to "
+		.. "resonate with hidden powers and plays a key role in unlocking the truth.",
+}
 
--- Menu Bảng Điều Khiển
-local MainMenu = Instance.new("Frame")
-MainMenu.Name = "MainMenu"
-MainMenu.Size = UDim2.new(0, 220, 0, 180)
-MainMenu.Position = UDim2.new(0, 50, 0, 50)
-MainMenu.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-MainMenu.BorderSizePixel = 0
-MainMenu.Active = true
-MainMenu.Draggable = true -- Cho phép kéo menu
-MainMenu.Parent = ScreenGui
+----------------------------------------------------------------
+-- Bảng màu / hằng số
+----------------------------------------------------------------
 
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 8)
-UICorner.Parent = MainMenu
+local COLORS = {
+	pill = Color3.fromRGB(10, 10, 10),
+	pillEdge = Color3.fromRGB(28, 28, 30),
+	text = Color3.fromRGB(245, 245, 247),
+	dim = Color3.fromRGB(190, 190, 195),
+	green = Color3.fromRGB(50, 215, 75),
+	red = Color3.fromRGB(255, 69, 58),
+}
 
--- Tiêu đề Menu
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 35)
-Title.BackgroundTransparency = 1
-Title.Text = "AIMBOT SETTINGS"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Font = Enum.Font.SourceSansBold
-Title.TextSize = 16
-Title.TextXAlignment = Enum.TextXAlignment.Left -- Chuyển sang trái để nhường chỗ cho nút X
-Title.Position = UDim2.new(0, 15, 0, 0)
-Title.Parent = MainMenu
+local PILL_SIZE = UDim2.fromOffset(260, 44)
+local CARD_SIZE = UDim2.fromOffset(300, 130)
+local FIXED_POSITION = UDim2.new(0.5, 0, 0, 24) -- vị trí cố định, luôn quay về đây
 
--- NÚT TẮT UI (Close Button)
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Name = "CloseButton"
-CloseBtn.Size = UDim2.new(0, 25, 0, 25)
-CloseBtn.Position = UDim2.new(1, -35, 0, 5) -- Nằm ở góc trên bên phải thanh tiêu đề
-CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
-CloseBtn.Text = "X"
-CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseBtn.Font = Enum.Font.SourceSansBold
-CloseBtn.TextSize = 14
-CloseBtn.Parent = MainMenu
+local DRAG_THRESHOLD = 45 -- kéo xuống quá 45px thì bung thẻ
+local EASE_SNAP = TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local EASE_FADE = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
-local CloseCorner = Instance.new("UICorner")
-CloseCorner.CornerRadius = UDim.new(0, 5)
-CloseCorner.Parent = CloseBtn
+----------------------------------------------------------------
+-- Helper
+----------------------------------------------------------------
 
--- Nút Bật/Tắt Aimbot
-local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(0, 180, 0, 30)
-ToggleBtn.Position = UDim2.new(0, 20, 0, 45)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
-ToggleBtn.Text = "Aimbot: ON"
-ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleBtn.Font = Enum.Font.SourceSansBold
-ToggleBtn.TextSize = 14
-ToggleBtn.Parent = MainMenu
-
-local BtnCorner = Instance.new("UICorner")
-BtnCorner.CornerRadius = UDim.new(0, 5)
-BtnCorner.Parent = ToggleBtn
-
--- Label cho Thanh Kéo Slider
-local SliderLabel = Instance.new("TextLabel")
-SliderLabel.Size = UDim2.new(0, 180, 0, 20)
-SliderLabel.Position = UDim2.new(0, 20, 0, 90)
-SliderLabel.BackgroundTransparency = 1
-SliderLabel.Text = "FOV Size: " .. FovRadius
-SliderLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-SliderLabel.Font = Enum.Font.SourceSans
-SliderLabel.TextSize = 14
-SliderLabel.TextXAlignment = Enum.TextXAlignment.Left
-SliderLabel.Parent = MainMenu
-
--- Thanh Kéo Slider (Nền)
-local SliderBar = Instance.new("Frame")
-SliderBar.Size = UDim2.new(0, 180, 0, 6)
-SliderBar.Position = UDim2.new(0, 20, 0, 120)
-SliderBar.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-SliderBar.BorderSizePixel = 0
-SliderBar.Parent = MainMenu
-
--- Cục Kéo Slider
-local SliderButton = Instance.new("TextButton")
-SliderButton.Size = UDim2.new(0, 14, 0, 14)
-SliderButton.AnchorPoint = Vector2.new(0.5, 0.5)
-local initialXScale = FovRadius / MaxFov
-SliderButton.Position = UDim2.new(initialXScale, 0, 0.5, 0)
-SliderButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-SliderButton.Text = ""
-SliderButton.Parent = SliderBar
-
-local SliderCorner = Instance.new("UICorner")
-SliderCorner.CornerRadius = UDim.new(1, 0)
-SliderCorner.Parent = SliderButton
-
-
-------------------------------------------------------------------------
--- 2. LOGIC ĐIỀU KHIỂN UI (INTERACTION LOGIC)
-------------------------------------------------------------------------
-
--- Xử lý nút X để đóng/tắt UI hoàn toàn
-CloseBtn.MouseButton1Click:Connect(function()
-	MainMenu.Visible = false
-	FOVCircle.Visible = false
-	AimbotEnabled = false -- Tắt luôn aimbot khi đóng UI cho an toàn
-end)
-
--- Thay đổi màu nút X khi rê chuột qua tạo hiệu ứng mượt mà
-CloseBtn.MouseEnter:Connect(function()
-	CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-end)
-CloseBtn.MouseLeave:Connect(function()
-	CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
-end)
-
--- Xử lý nút Bật/Tắt Aimbot
-ToggleBtn.MouseButton1Click:Connect(function()
-	AimbotEnabled = not AimbotEnabled
-	if AimbotEnabled then
-		ToggleBtn.Text = "Aimbot: ON"
-		ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
-		FOVCircle.Visible = true
-	else
-		ToggleBtn.Text = "Aimbot: OFF"
-		ToggleBtn.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
-		FOVCircle.Visible = false
+local function new(className: string, props: { [string]: any }, children: { Instance }?)
+	local inst = Instance.new(className)
+	for prop, value in pairs(props) do
+		(inst :: any)[prop] = value
 	end
-end)
-
--- Xử lý kéo thanh Slider để chỉnh kích thước vòng tròn FOV
-local dragging = false
-
-SliderButton.MouseButton1Down:Connect(function()
-	dragging = true
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		dragging = false
-	end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-		local barAbsolutePos = SliderBar.AbsolutePosition
-		local barAbsoluteSize = SliderBar.AbsoluteSize
-		local mouseX = input.Position.X
-		
-		local scale = (mouseX - barAbsolutePos.X) / barAbsoluteSize.X
-		scale = math.clamp(scale, 0, 1)
-		
-		SliderButton.Position = UDim2.new(scale, 0, 0.5, 0)
-		
-		FovRadius = math.max(10, math.floor(scale * MaxFov))
-		SliderLabel.Text = "FOV Size: " .. FovRadius
-		
-		if MainMenu.Visible then -- Chỉ cập nhật kích thước vòng tròn nếu UI đang mở
-			FOVCircle.Size = UDim2.new(0, FovRadius * 2, 0, FovRadius * 2)
+	if children then
+		for _, child in ipairs(children) do
+			child.Parent = inst
 		end
 	end
-end)
-
-
-------------------------------------------------------------------------
--- 3. LOGIC AIMBOT TRONG VÒNG TRÒN FOV
-------------------------------------------------------------------------
-
-local function getClosestPlayerToCrosshair()
-	local closestPlayer = nil
-	local shortestDistance = FovRadius
-	local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
-
-	if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-		return nil
-	end
-
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
-			
-			if TeamCheck and player.Team == LocalPlayer.Team and player.Team ~= nil then
-				continue
-			end
-
-			if ForceFieldCheck and player.Character:FindFirstChildOfClass("ForceField") then
-				continue
-			end
-
-			local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-			if humanoid and humanoid.Health > 0 then
-				local head = player.Character.Head
-				local screenPos, onScreen = Camera:WorldToViewportPoint(head.Position)
-				
-				if onScreen then
-					local distanceToCenter = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-					
-					if distanceToCenter < shortestDistance then
-						shortestDistance = distanceToCenter
-						closestPlayer = player
-					end
-				end
-			end
-		end
-	end
-	return closestPlayer
+	return inst
 end
 
-RunService.RenderStepped:Connect(function()
-	local screenCenter = UDim2.new(0.5, 0, 0.5, 0)
-	if FOVCircle.Position ~= screenCenter then
-		FOVCircle.Position = screenCenter
+local function corner(radius: number)
+	return new("UICorner", { CornerRadius = UDim.new(0, radius) })
+end
+
+----------------------------------------------------------------
+-- Dựng ScreenGui + khung chính (KHÔNG draggable tự do)
+----------------------------------------------------------------
+
+local screenGui = new("ScreenGui", {
+	Name = "QuestTrackerGui",
+	ResetOnSpawn = false,
+	IgnoreGuiInset = true,
+})
+
+local root = new("ImageButton", {
+	Name = "QuestTracker",
+	AnchorPoint = Vector2.new(0.5, 0),
+	Position = FIXED_POSITION,
+	Size = PILL_SIZE,
+	BackgroundColor3 = COLORS.pill,
+	BorderSizePixel = 0,
+	ClipsDescendants = true,
+	Active = true, -- cần Active = true để nhận InputBegan
+	AutoButtonColor = false,
+	Image = "",
+}, {
+	corner(999),
+	new("UIStroke", { Color = COLORS.pillEdge, Thickness = 1 }),
+})
+root.Parent = screenGui
+
+----------------------------------------------------------------
+-- 2. CHẤM TRẠNG THÁI (xanh phát sáng / đỏ tĩnh)
+----------------------------------------------------------------
+
+local statusDot = new("Frame", {
+	Name = "StatusDot",
+	AnchorPoint = Vector2.new(0, 0.5),
+	Position = UDim2.new(0, 14, 0.5, 0),
+	Size = UDim2.fromOffset(10, 10),
+	BackgroundColor3 = COLORS.green,
+	BorderSizePixel = 0,
+	ZIndex = 3,
+}, { corner(999) })
+statusDot.Parent = root
+
+local statusGlow = new("Frame", {
+	Name = "StatusGlow",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.new(0.5, 0, 0.5, 0),
+	Size = UDim2.fromOffset(10, 10),
+	BackgroundColor3 = COLORS.green,
+	BackgroundTransparency = 1,
+	BorderSizePixel = 0,
+	ZIndex = 2,
+}, { corner(999) })
+statusGlow.Parent = statusDot
+
+local function playGlowLoop()
+	statusGlow.Size = UDim2.fromOffset(10, 10)
+	statusGlow.BackgroundTransparency = 0.35
+	local tw = TweenService:Create(
+		statusGlow,
+		TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, -1, false),
+		{ Size = UDim2.fromOffset(22, 22), BackgroundTransparency = 1 }
+	)
+	tw:Play()
+	return tw
+end
+
+local activeGlowTween: Tween? = nil
+
+local function setOnlineStatus(online: boolean)
+	QUEST_DATA.statusOnline = online
+	statusDot.BackgroundColor3 = online and COLORS.green or COLORS.red
+	statusGlow.BackgroundColor3 = COLORS.green
+
+	if activeGlowTween then
+		activeGlowTween:Cancel()
+		activeGlowTween = nil
 	end
 
-	-- Logic ngắm mục tiêu (Chỉ chạy khi Menu UI đang hiển thị và Aimbot được bật)
-	if AimbotEnabled and MainMenu.Visible then
-		local target = getClosestPlayerToCrosshair()
-		if target and target.Character and target.Character:FindFirstChild("Head") then
-			local targetHeadPos = target.Character.Head.Position
-			Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, targetHeadPos)
-		end
+	if online then
+		activeGlowTween = playGlowLoop()
+	else
+		statusGlow.BackgroundTransparency = 1
+	end
+end
+
+----------------------------------------------------------------
+-- 3. AVATAR THẬT CỦA PLAYER
+----------------------------------------------------------------
+
+local avatarImage = new("ImageLabel", {
+	Name = "Avatar",
+	AnchorPoint = Vector2.new(0, 0.5),
+	Position = UDim2.new(0, 32, 0.5, 0),
+	Size = UDim2.fromOffset(28, 28),
+	BackgroundColor3 = Color3.fromRGB(40, 40, 42),
+	BorderSizePixel = 0,
+	Image = "",
+}, { corner(999) })
+avatarImage.Parent = root
+
+-- Lấy thumbnail thật của player (hàm này yield nên chạy trong task.spawn)
+task.spawn(function()
+	local ok, content = pcall(function()
+		return Players:GetUserThumbnailAsync(
+			player.UserId,
+			Enum.ThumbnailType.HeadShot,
+			Enum.ThumbnailSize.Size100x100
+		)
+	end)
+	if ok and content then
+		avatarImage.Image = content
 	end
 end)
+
+----------------------------------------------------------------
+-- Text hiển thị trên pill
+----------------------------------------------------------------
+
+local pillLabel = new("TextLabel", {
+	Name = "PillText",
+	AnchorPoint = Vector2.new(0, 0.5),
+	Position = UDim2.new(0, 70, 0.5, 0),
+	Size = UDim2.new(1, -84, 1, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	TextSize = 13,
+	TextColor3 = COLORS.text,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	Text = QUEST_DATA.pillText,
+}, {})
+pillLabel.Parent = root
+
+----------------------------------------------------------------
+-- Thẻ mở rộng (hiện khi kéo xuống) — icon + tiêu đề + mô tả
+----------------------------------------------------------------
+
+local card = new("Frame", {
+	Name = "ExpandedCard",
+	Size = UDim2.fromScale(1, 1),
+	BackgroundTransparency = 1,
+	Visible = true,
+}, {
+	new("UIPadding", {
+		PaddingLeft = UDim.new(0, 16),
+		PaddingRight = UDim.new(0, 16),
+		PaddingTop = UDim.new(0, 16),
+		PaddingBottom = UDim.new(0, 16),
+	}),
+})
+card.Parent = root
+card.BackgroundTransparency = 1
+
+local cardIcon = new("ImageLabel", {
+	Name = "ItemIcon",
+	Position = UDim2.fromOffset(0, 0),
+	Size = UDim2.fromOffset(48, 48),
+	BackgroundColor3 = Color3.fromRGB(235, 235, 235),
+	BorderSizePixel = 0,
+	Image = QUEST_DATA.itemIconId,
+	ImageTransparency = 1,
+	BackgroundTransparency = 1,
+	ScaleType = Enum.ScaleType.Fit,
+}, { corner(10) })
+cardIcon.Parent = card
+
+local cardTitle = new("TextLabel", {
+	Name = "ItemTitle",
+	Position = UDim2.new(0, 62, 0, 0),
+	Size = UDim2.new(1, -62, 0, 22),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	TextSize = 16,
+	TextColor3 = COLORS.text,
+	TextTransparency = 1,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Text = QUEST_DATA.itemTitle,
+}, {})
+cardTitle.Parent = card
+
+local cardDesc = new("TextLabel", {
+	Name = "ItemDescription",
+	Position = UDim2.new(0, 62, 0, 24),
+	Size = UDim2.new(1, -62, 0, 82),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.Gotham,
+	TextSize = 12,
+	TextColor3 = COLORS.dim,
+	TextTransparency = 1,
+	TextWrapped = true,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Top,
+	Text = QUEST_DATA.itemDescription,
+}, {})
+cardDesc.Parent = card
+
+local cardElements = { cardIcon, cardTitle, cardDesc }
+
+----------------------------------------------------------------
+-- Chuyển đổi Pill <-> Card
+----------------------------------------------------------------
+
+local isExpanded = false
+local isAnimating = false
+
+local function expand()
+	if isExpanded or isAnimating then
+		return
+	end
+	isAnimating = true
+	isExpanded = true
+
+	TweenService:Create(root, EASE_SNAP, { Size = CARD_SIZE, Position = FIXED_POSITION }):Play()
+
+	-- ẩn nội dung pill, hiện nội dung card
+	TweenService:Create(pillLabel, EASE_FADE, { TextTransparency = 1 }):Play()
+	TweenService:Create(statusDot, EASE_FADE, { BackgroundTransparency = 1 }):Play()
+	TweenService:Create(avatarImage, EASE_FADE, { ImageTransparency = 1, BackgroundTransparency = 1 }):Play()
+
+	task.delay(0.15, function()
+		for _, el in ipairs(cardElements) do
+			if el:IsA("TextLabel") then
+				TweenService:Create(el, EASE_FADE, { TextTransparency = 0 }):Play()
+			else
+				TweenService:Create(el, EASE_FADE, { ImageTransparency = 0 }):Play()
+			end
+		end
+		isAnimating = false
+	end)
+end
+
+local function collapse()
+	if not isExpanded or isAnimating then
+		return
+	end
+	isAnimating = true
+	isExpanded = false
+
+	for _, el in ipairs(cardElements) do
+		if el:IsA("TextLabel") then
+			TweenService:Create(el, EASE_FADE, { TextTransparency = 1 }):Play()
+		else
+			TweenService:Create(el, EASE_FADE, { ImageTransparency = 1 }):Play()
+		end
+	end
+
+	TweenService:Create(root, EASE_SNAP, { Size = PILL_SIZE, Position = FIXED_POSITION }):Play()
+
+	task.delay(0.2, function()
+		TweenService:Create(pillLabel, EASE_FADE, { TextTransparency = 0 }):Play()
+		TweenService:Create(statusDot, EASE_FADE, { BackgroundTransparency = 0 }):Play()
+		TweenService:Create(avatarImage, EASE_FADE, { ImageTransparency = 0, BackgroundTransparency = 0 }):Play()
+		isAnimating = false
+	end)
+end
+
+----------------------------------------------------------------
+-- Cử chỉ: giữ + kéo xuống để bung thẻ (KHÔNG cho di chuyển tự do)
+----------------------------------------------------------------
+
+local dragging = false
+local dragStartY = 0
+local dragConnection: RBXScriptConnection? = nil
+local dragEndConnection: RBXScriptConnection? = nil
+
+local function onInputBegan(input: InputObject)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+		return
+	end
+	if isAnimating then
+		return
+	end
+
+	dragging = true
+	dragStartY = input.Position.Y
+
+	dragConnection = UserInputService.InputChanged:Connect(function(moveInput)
+		if not dragging then
+			return
+		end
+		if moveInput.UserInputType ~= Enum.UserInputType.MouseMovement and moveInput.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		local deltaY = moveInput.Position.Y - dragStartY
+
+		-- Chỉ dùng deltaY để QUYẾT ĐỊNH bung/thu, KHÔNG dùng để dịch chuyển vị trí pill.
+		-- => pill luôn đứng yên tại FIXED_POSITION, không kéo lung tung được.
+		if not isExpanded and deltaY > DRAG_THRESHOLD then
+			expand()
+		elseif isExpanded and deltaY < -DRAG_THRESHOLD then
+			collapse()
+		end
+	end)
+
+	dragEndConnection = UserInputService.InputEnded:Connect(function(endInput)
+		if endInput.UserInputType == Enum.UserInputType.MouseButton1 or endInput.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+			if dragConnection then
+				dragConnection:Disconnect()
+				dragConnection = nil
+			end
+			if dragEndConnection then
+				dragEndConnection:Disconnect()
+				dragEndConnection = nil
+			end
+		end
+	end)
+end
+
+root.InputBegan:Connect(onInputBegan)
+
+-- Bấm nhẹ (không kéo) vào card khi đang mở rộng cũng có thể thu gọn lại
+root.MouseButton1Click:Connect(function()
+	if isExpanded then
+		collapse()
+	end
+end)
+
+----------------------------------------------------------------
+-- Khởi động
+----------------------------------------------------------------
+
+pillLabel.TextTransparency = 0
+statusDot.BackgroundTransparency = 0
+setOnlineStatus(QUEST_DATA.statusOnline)
+
+screenGui.Parent = playerGui
