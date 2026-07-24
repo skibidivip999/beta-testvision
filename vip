@@ -37,11 +37,11 @@ local QUEST_DATA = {
 
 	itemIconId = "rbxassetid://0",
 	itemTitle = "Mirror Fractal",
-	itemDescription = "The Mirror Fractal is a mysterious relic with a shimmering, "
-		.. "mirror-like surface that reflects light in strange ways. It is said to "
-		.. "resonate with hidden powers and plays a key role in unlocking the truth.",
-}
+	itemDescription = "XIN CHÀO CẢM ƠN DÃ TIN TƯỞNG VÀ SỬ DỤNG SCRIPT CỦA TÔI, "
+		.. "ĐÂY CHỈ LÀ 1 SCRIPT DYNAMIS ISLAND "
+        .. "TRONG TƯƠNG LAI TÔI SẼ THÊM CHỨC NĂNG NGHE NHẠC CHO AI THÍCH NGHE NHẠC.",
 
+}
 ----------------------------------------------------------------
 -- Bảng màu / hằng số
 ----------------------------------------------------------------
