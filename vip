@@ -1,21 +1,6 @@
 --!strict
 --[[
 	QuestTracker.client.luau
-
-	Widget theo dõi nhiệm vụ dạng "pill":
-	  - Chấm tròn xanh (trạng thái) nhấp nháy phát sáng bên trái
-	  - Avatar THẬT của player (lấy qua Players:GetUserThumbnailAsync)
-	  - Text nhiệm vụ, ví dụ "Killing Dough king to get Mirror"
-
-	Hành vi:
-	  0) Lúc load game: hiện hiệu ứng "Welcome" (thu nhỏ -> bung ra chào
-	     mừng -> thu lại -> mở ra thành pill nhiệm vụ bình thường).
-	  1) Vị trí pill CỐ ĐỊNH, người chơi không kéo đi lung tung được.
-	  2) Chỉ có một cử chỉ: giữ và KÉO XUỐNG. Nếu kéo đủ xa, pill sẽ
-	     bung ra thành thẻ RỘNG HƠN (chỉ kéo dài chiều ngang, góc bo
-	     nhẹ chứ không tròn hẳn), hiện icon/tiêu đề/mô tả tự điền.
-	  3) Kéo lên (hoặc bấm nhẹ) để đóng thẻ, trở lại pill nhỏ.
-
 	Đặt file trong StarterPlayer > StarterPlayerScripts.
 ]]
 
@@ -32,15 +17,14 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 local QUEST_DATA = {
 	statusOnline = true,
-	pillText = "Killing Dough king to get Mirror",
-	welcomeText = "Chào mừng, " .. player.Name .. "!",
+	pillText = "kéo xuống để mở thêm chức năng",
+	welcomeText = "Welcome back, " .. player.Name .. "!",
 
 	itemIconId = "rbxassetid://0",
-	itemTitle = "Mirror Fractal",
+	itemTitle = "text",
 	itemDescription = "XIN CHÀO CẢM ƠN DÃ TIN TƯỞNG VÀ SỬ DỤNG SCRIPT CỦA TÔI, "
-		.. "ĐÂY CHỈ LÀ 1 SCRIPT DYNAMIS ISLAND "
+        .. "ĐÂY CHỈ LÀ 1 SCRIPT DYNAMIS ISLAND "
         .. "TRONG TƯƠNG LAI TÔI SẼ THÊM CHỨC NĂNG NGHE NHẠC CHO AI THÍCH NGHE NHẠC.",
-
 }
 ----------------------------------------------------------------
 -- Bảng màu / hằng số
@@ -55,17 +39,19 @@ local COLORS = {
 	red = Color3.fromRGB(255, 69, 58),
 }
 
-local TINY_SIZE = UDim2.fromOffset(44, 44) -- điểm khởi đầu/kết thúc của hiệu ứng welcome
+local TINY_SIZE = UDim2.fromOffset(44, 44)
 local WELCOME_SIZE = UDim2.fromOffset(230, 44)
 local PILL_SIZE = UDim2.fromOffset(260, 44)
-local CARD_SIZE = UDim2.fromOffset(340, 44) -- CHỈ kéo dài chiều rộng, giữ nguyên chiều cao pill
+local CARD_SIZE = UDim2.fromOffset(340, 44) -- chỉ kéo dài chiều rộng
 local FIXED_POSITION = UDim2.new(0.5, 0, 0, 24)
 
-local PILL_CORNER = 999 -- bo tròn hết cỡ -> hình viên thuốc
-local CARD_CORNER = 20 -- bo nhẹ -> hình chữ nhật bo góc, KHÔNG tròn
+local PILL_CORNER = 999 -- viên thuốc
+local CARD_CORNER = 20 -- bo nhẹ, không tròn
 
 local DRAG_THRESHOLD = 45
 local EASE_SNAP = TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+-- Riêng cho CornerRadius: KHÔNG dùng Back (tránh overshoot làm góc méo lúc thu lại)
+local EASE_CORNER = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
 local EASE_FADE = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local EASE_INTRO = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
@@ -102,7 +88,7 @@ local root = new("ImageButton", {
 	Name = "QuestTracker",
 	AnchorPoint = Vector2.new(0.5, 0),
 	Position = FIXED_POSITION,
-	Size = TINY_SIZE, -- bắt đầu nhỏ, sẽ bung ra bằng hiệu ứng intro
+	Size = TINY_SIZE,
 	BackgroundColor3 = COLORS.pill,
 	BorderSizePixel = 0,
 	ClipsDescendants = true,
@@ -322,7 +308,7 @@ local cardElements = { cardIcon, cardTitle, cardDesc }
 
 local isExpanded = false
 local isAnimating = false
-local introPlaying = true -- chặn tương tác trong lúc chạy hiệu ứng welcome
+local introPlaying = true
 
 local function expand()
 	if isExpanded or isAnimating or introPlaying then
@@ -332,7 +318,7 @@ local function expand()
 	isExpanded = true
 
 	TweenService:Create(root, EASE_SNAP, { Size = CARD_SIZE, Position = FIXED_POSITION }):Play()
-	TweenService:Create(rootCorner, EASE_SNAP, { CornerRadius = UDim.new(0, CARD_CORNER) }):Play()
+	TweenService:Create(rootCorner, EASE_CORNER, { CornerRadius = UDim.new(0, CARD_CORNER) }):Play()
 
 	TweenService:Create(pillLabel, EASE_FADE, { TextTransparency = 1 }):Play()
 
@@ -363,8 +349,10 @@ local function collapse()
 		end
 	end
 
+	-- Size dùng Back cho cảm giác nảy nhẹ, nhưng CornerRadius dùng easing không overshoot
+	-- để góc bo trả về ĐÚNG 999 (viên thuốc tròn) như trạng thái ban đầu, không bị méo.
 	TweenService:Create(root, EASE_SNAP, { Size = PILL_SIZE, Position = FIXED_POSITION }):Play()
-	TweenService:Create(rootCorner, EASE_SNAP, { CornerRadius = UDim.new(0, PILL_CORNER) }):Play()
+	TweenService:Create(rootCorner, EASE_CORNER, { CornerRadius = UDim.new(0, PILL_CORNER) }):Play()
 
 	task.delay(0.2, function()
 		TweenService:Create(pillLabel, EASE_FADE, { TextTransparency = 0 }):Play()
@@ -432,28 +420,26 @@ root.MouseButton1Click:Connect(function()
 end)
 
 ----------------------------------------------------------------
--- 0. Hiệu ứng WELCOME lúc mở game:
---    tiny -> bung ra chào mừng -> thu lại -> mở ra pill nhiệm vụ bình thường
+-- 0. Hiệu ứng WELCOME lúc mở game
 ----------------------------------------------------------------
 
 local function playIntro()
-	-- bung ra hiện chữ chào mừng
 	TweenService:Create(root, EASE_INTRO, { Size = WELCOME_SIZE }):Play()
 	local welcomeIn = TweenService:Create(welcomeLabel, EASE_FADE, { TextTransparency = 0 })
 	task.wait(0.2)
 	welcomeIn:Play()
 
-	task.wait(1.6) -- giữ chữ welcome trên màn hình một lúc
+	task.wait(1.6)
 
-	-- thu chữ welcome lại
 	local welcomeOut = TweenService:Create(welcomeLabel, EASE_FADE, { TextTransparency = 1 })
 	welcomeOut:Play()
 	TweenService:Create(root, EASE_SNAP, { Size = TINY_SIZE }):Play()
 	task.wait(0.35)
 
-	-- mở ra thành pill nhiệm vụ ban đầu
 	introPlaying = false
 	TweenService:Create(root, EASE_SNAP, { Size = PILL_SIZE }):Play()
+	-- đảm bảo góc bo luôn ở đúng dạng viên thuốc khi mở ra pill nhiệm vụ
+	TweenService:Create(rootCorner, EASE_CORNER, { CornerRadius = UDim.new(0, PILL_CORNER) }):Play()
 	task.wait(0.2)
 	TweenService:Create(pillLabel, EASE_FADE, { TextTransparency = 0 }):Play()
 	TweenService:Create(statusDot, EASE_FADE, { BackgroundTransparency = 0 }):Play()
