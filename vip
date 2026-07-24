@@ -108,12 +108,14 @@ local function createStatusAvatar(parent: Instance, avatarSize: number, dotSize:
 	})
 	holder.Parent = parent
 
-	local avatar = new("ImageLabel", {
+	-- [THAY ĐỔI]: Dùng ImageButton thay vì ImageLabel để có thể Click được
+	local avatar = new("ImageButton", {
 		Name = "Avatar",
 		Size = UDim2.fromOffset(avatarSize, avatarSize),
 		Position = UDim2.fromOffset(0, 0),
 		BackgroundColor3 = Color3.fromRGB(40, 40, 42),
 		BorderSizePixel = 0,
+		AutoButtonColor = false,
 		Image = "",
 	}, { corner(999) })
 	avatar.Parent = holder
@@ -214,7 +216,8 @@ local pillLayer = new("Frame", {
 }, {})
 pillLayer.Parent = root
 
-createStatusAvatar(pillLayer, 26, 9, UDim2.new(0, 12, 0.5, 0), Vector2.new(0, 0.5))
+-- Lưu lại biến pillAvatar để dùng cho sự kiện Click
+local pillHolder, pillAvatar = createStatusAvatar(pillLayer, 26, 9, UDim2.new(0, 12, 0.5, 0), Vector2.new(0, 0.5))
 
 new("TextLabel", {
 	Name = "PillText",
@@ -257,7 +260,8 @@ local headerRow = new("Frame", {
 })
 headerRow.Parent = playerLayer
 
-createStatusAvatar(headerRow, 22, 8, UDim2.fromOffset(0, 0), Vector2.new(0, 0))
+-- Lưu lại biến headerAvatar để dùng cho sự kiện Click
+local headerHolder, headerAvatar = createStatusAvatar(headerRow, 22, 8, UDim2.fromOffset(0, 0), Vector2.new(0, 0))
 
 new("TextLabel", {
 	Name = "HeaderName",
@@ -355,7 +359,6 @@ new("TextLabel", {
 	LayoutOrder = 3,
 }).Parent = controlsRow
 
--- 4. Ô nhập Audio ID + nút Phát
 local linkRow = new("Frame", {
 	Name = "LinkRow",
 	Position = UDim2.new(0, 0, 1, -34),
@@ -382,7 +385,7 @@ local linkInput = new("TextBox", {
 	PlaceholderText = "Nhập ID nhạc...",
 	PlaceholderColor3 = COLORS.dim,
 	ClearTextOnFocus = false,
-	Text = "1837879082", -- Điền sẵn 1 ID mẫu để test
+	Text = "1837879082",
 	TextXAlignment = Enum.TextXAlignment.Left,
 	LayoutOrder = 1,
 }, {
@@ -413,7 +416,6 @@ local nowPlayingSound = new("Sound", { Name = "NowPlayingSound", Volume = 0.5 })
 nowPlayingSound.Parent = root
 
 local function playFromAudioID(inputText: string)
-	-- Lọc chỉ lấy các chữ số từ ô nhập (tránh người chơi gõ nhầm chữ)
 	local id = inputText:match("%d+")
 	
 	if not id then
@@ -421,7 +423,6 @@ local function playFromAudioID(inputText: string)
 		return
 	end
 
-	-- Gắn ID vào định dạng rbxassetid:// của Roblox
 	nowPlayingSound.SoundId = "rbxassetid://" .. id
 	
 	if not nowPlayingSound.IsLoaded then
@@ -537,6 +538,16 @@ root.InputBegan:Connect(function(input)
 		end
 	end)
 end)
+
+----------------------------------------------------------------
+-- SỰ KIỆN CLICK VÀO AVATAR (THU GỌN / MỞ RỘNG)
+----------------------------------------------------------------
+
+-- Nhấn vào Avatar lúc đang thu gọn (Pill) -> Mở rộng
+pillAvatar.MouseButton1Click:Connect(expand)
+
+-- Nhấn vào Avatar lúc đang mở rộng (Player) -> Thu gọn
+headerAvatar.MouseButton1Click:Connect(collapse)
 
 ----------------------------------------------------------------
 -- Hiệu ứng Chào mừng (Intro)
