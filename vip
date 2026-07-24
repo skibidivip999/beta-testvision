@@ -2,6 +2,13 @@
 --[[
 	QuestTracker.client.luau
 	Đặt file trong StarterPlayer > StarterPlayerScripts.
+
+	Trạng thái: intro (welcome) -> idle (pill nhỏ) -> player (kéo xuống,
+	bảng nghe nhạc: avatar + trạng thái ở trên cùng, album art, điều
+	khiển play, ô nhập link YouTube).
+
+	Mỗi trạng thái là MỘT LAYER RIÊNG, chỉ hiện qua thuộc tính Visible.
+	Cách này tránh lỗi chữ/avatar không hiện do tween Transparency chồng chéo.
 ]]
 
 local Players = game:GetService("Players")
@@ -17,42 +24,45 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 local QUEST_DATA = {
 	statusOnline = true,
-	pillText = "Xin vui lòng kéo xuống",
-	welcomeText = "Chào mừng trở lại, " .. player.Name .. "!",
-
-	itemIconId = "rbxassetid://0",
-	itemTitle = "",
-	itemDescription = "XIN CHÀO CẢM ƠN DÃ TIN TƯỞNG VÀ SỬ DỤNG SCRIPT CỦA TÔI, "
-        .. "ĐÂY CHỈ LÀ 1 SCRIPT DYNAMIS ISLAND "
-        .. "TRONG TƯƠNG LAI TÔI SẼ THÊM CHỨC NĂNG NGHE NHẠC CHO AI THÍCH NGHE NHẠC.",
+	pillText = "Killing Dough king to get Mirror",
+	welcomeText = "Chào mừng, " .. player.Name .. "!",
+	nowPlayingTitle = "Chưa phát bài nào",
 }
+
+-- Bảng tra cứu: link YouTube -> rbxassetid bạn ĐÃ TỰ TẢI LÊN Roblox
+-- (Roblox không cho stream trực tiếp từ URL ngoài, phải map sang asset
+-- đã có bản quyền/qua kiểm duyệt). Tự thêm dòng của bạn vào đây.
+local YOUTUBE_TO_ASSET: { [string]: string } = {
+	-- ["https://youtu.be/xxxxxxxxxxx"] = "rbxassetid://123456789",
+}
+
 ----------------------------------------------------------------
 -- Bảng màu / hằng số
 ----------------------------------------------------------------
 
 local COLORS = {
-	pill = Color3.fromRGB(10, 10, 10),
-	pillEdge = Color3.fromRGB(28, 28, 30),
+	bg = Color3.fromRGB(10, 10, 10),
+	edge = Color3.fromRGB(28, 28, 30),
 	text = Color3.fromRGB(245, 245, 247),
 	dim = Color3.fromRGB(190, 190, 195),
 	green = Color3.fromRGB(50, 215, 75),
 	red = Color3.fromRGB(255, 69, 58),
-	buttonBg = Color3.fromRGB(28, 28, 30),
+	buttonBg = Color3.fromRGB(30, 30, 32),
+	inputBg = Color3.fromRGB(22, 22, 24),
 }
 
 local TINY_SIZE = UDim2.fromOffset(44, 44)
 local WELCOME_SIZE = UDim2.fromOffset(230, 44)
 local PILL_SIZE = UDim2.fromOffset(260, 44)
-local CARD_SIZE = UDim2.fromOffset(340, 178) -- giống ảnh mẫu: cao hẳn ra, có chỗ cho nút
+local PLAYER_SIZE = UDim2.fromOffset(300, 260) -- bảng nghe nhạc, cao hơn hẳn
 local FIXED_POSITION = UDim2.new(0.5, 0, 0, 24)
 
-local PILL_CORNER = 999 -- viên thuốc lúc thu nhỏ
-local CARD_CORNER = 26 -- bo góc lớn như trong ảnh, không tròn hẳn
+local PILL_CORNER = 999
+local PLAYER_CORNER = 26
 
 local DRAG_THRESHOLD = 45
 local EASE_SNAP = TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local EASE_CORNER = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
-local EASE_FADE = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local EASE_INTRO = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
 ----------------------------------------------------------------
@@ -72,8 +82,12 @@ local function new(className: string, props: { [string]: any }, children: { Inst
 	return inst
 end
 
+local function corner(radius: number)
+	return new("UICorner", { CornerRadius = UDim.new(0, radius) })
+end
+
 ----------------------------------------------------------------
--- Dựng ScreenGui + khung chính
+-- Khung gốc
 ----------------------------------------------------------------
 
 local screenGui = new("ScreenGui", {
@@ -82,14 +96,14 @@ local screenGui = new("ScreenGui", {
 	IgnoreGuiInset = true,
 })
 
-local rootCorner = new("UICorner", { CornerRadius = UDim.new(0, PILL_CORNER) })
+local rootCorner = corner(PILL_CORNER)
 
 local root = new("ImageButton", {
 	Name = "QuestTracker",
 	AnchorPoint = Vector2.new(0.5, 0),
 	Position = FIXED_POSITION,
 	Size = TINY_SIZE,
-	BackgroundColor3 = COLORS.pill,
+	BackgroundColor3 = COLORS.bg,
 	BorderSizePixel = 0,
 	ClipsDescendants = true,
 	Active = true,
@@ -97,256 +111,387 @@ local root = new("ImageButton", {
 	Image = "",
 }, {
 	rootCorner,
-	new("UIStroke", { Color = COLORS.pillEdge, Thickness = 1 }),
+	new("UIStroke", { Color = COLORS.edge, Thickness = 1 }),
 })
 root.Parent = screenGui
 
+-- helper tạo avatar + chấm trạng thái (dùng lại được ở nhiều nơi)
+local statusRefs: { { dot: Frame, glow: Frame } } = {}
+
+local function createStatusAvatar(parent: Instance, avatarSize: number, dotSize: number, position: UDim2, anchor: Vector2)
+	local holder = new("Frame", {
+		Size = UDim2.fromOffset(avatarSize + 6, avatarSize + 6),
+		Position = position,
+		AnchorPoint = anchor,
+		BackgroundTransparency = 1,
+	})
+	holder.Parent = parent
+
+	local avatar = new("ImageLabel", {
+		Name = "Avatar",
+		Size = UDim2.fromOffset(avatarSize, avatarSize),
+		Position = UDim2.fromOffset(0, 0),
+		BackgroundColor3 = Color3.fromRGB(40, 40, 42),
+		BorderSizePixel = 0,
+		Image = "",
+	}, { corner(999) })
+	avatar.Parent = holder
+
+	task.spawn(function()
+		local ok, content = pcall(function()
+			return Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+		end)
+		if ok and content then
+			avatar.Image = content
+		end
+	end)
+
+	local dot = new("Frame", {
+		Name = "StatusDot",
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, 1, 1, 1),
+		Size = UDim2.fromOffset(dotSize, dotSize),
+		BackgroundColor3 = COLORS.green,
+		BorderSizePixel = 0,
+		ZIndex = 3,
+	}, {
+		corner(999),
+		new("UIStroke", { Color = COLORS.bg, Thickness = 2 }),
+	})
+	dot.Parent = avatar
+
+	local glow = new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.fromOffset(dotSize, dotSize),
+		BackgroundColor3 = COLORS.green,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 2,
+	}, { corner(999) })
+	glow.Parent = dot
+
+	table.insert(statusRefs, { dot = dot, glow = glow })
+	return holder, avatar, dot, glow
+end
+
+local function refreshStatusVisual(online: boolean)
+	QUEST_DATA.statusOnline = online
+	for _, ref in ipairs(statusRefs) do
+		ref.dot.BackgroundColor3 = online and COLORS.green or COLORS.red
+		local existing = ref.dot:FindFirstChild("GlowTween")
+		if existing then
+			(existing :: any):Destroy()
+		end
+		if online then
+			ref.glow.Size = UDim2.fromOffset(ref.dot.Size.X.Offset, ref.dot.Size.Y.Offset)
+			ref.glow.BackgroundTransparency = 0.35
+			local tw = TweenService:Create(
+				ref.glow,
+				TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, -1, false),
+				{ Size = UDim2.fromOffset(ref.dot.Size.X.Offset * 2.2, ref.dot.Size.Y.Offset * 2.2), BackgroundTransparency = 1 }
+			)
+			tw:Play()
+		else
+			ref.glow.BackgroundTransparency = 1
+		end
+	end
+end
+
 ----------------------------------------------------------------
--- Chữ chào mừng (chỉ hiện lúc intro)
+-- LAYER 1: Welcome (intro)
 ----------------------------------------------------------------
 
-local welcomeLabel = new("TextLabel", {
-	Name = "WelcomeLabel",
+local welcomeLayer = new("Frame", {
+	Name = "WelcomeLayer",
+	Size = UDim2.fromScale(1, 1),
+	BackgroundTransparency = 1,
+	Visible = true,
+}, {})
+welcomeLayer.Parent = root
+
+new("TextLabel", {
+	Name = "WelcomeText",
 	Size = UDim2.fromScale(1, 1),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamBold,
 	TextSize = 14,
 	TextColor3 = COLORS.text,
-	TextTransparency = 1,
 	Text = QUEST_DATA.welcomeText,
+	Visible = true,
+}).Parent = welcomeLayer
+
+----------------------------------------------------------------
+-- LAYER 2: Pill (idle) — 1. avatar + trạng thái nằm bên trái, giữa hàng
+----------------------------------------------------------------
+
+local pillLayer = new("Frame", {
+	Name = "PillLayer",
+	Size = UDim2.fromScale(1, 1),
+	BackgroundTransparency = 1,
+	Visible = false,
 }, {})
-welcomeLabel.Parent = root
+pillLayer.Parent = root
 
-----------------------------------------------------------------
--- 2. CHẤM TRẠNG THÁI (xanh phát sáng / đỏ tĩnh)
-----------------------------------------------------------------
+createStatusAvatar(pillLayer, 26, 9, UDim2.new(0, 12, 0.5, 0), Vector2.new(0, 0.5))
 
-local statusDot = new("Frame", {
-	Name = "StatusDot",
-	AnchorPoint = Vector2.new(0, 0.5),
-	Position = UDim2.new(0, 14, 0.5, 0),
-	Size = UDim2.fromOffset(10, 10),
-	BackgroundColor3 = COLORS.green,
-	BackgroundTransparency = 1,
-	BorderSizePixel = 0,
-	ZIndex = 3,
-}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }) })
-statusDot.Parent = root
-
-local statusGlow = new("Frame", {
-	Name = "StatusGlow",
-	AnchorPoint = Vector2.new(0.5, 0.5),
-	Position = UDim2.new(0.5, 0, 0.5, 0),
-	Size = UDim2.fromOffset(10, 10),
-	BackgroundColor3 = COLORS.green,
-	BackgroundTransparency = 1,
-	BorderSizePixel = 0,
-	ZIndex = 2,
-}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }) })
-statusGlow.Parent = statusDot
-
-local function playGlowLoop()
-	statusGlow.Size = UDim2.fromOffset(10, 10)
-	statusGlow.BackgroundTransparency = 0.35
-	local tw = TweenService:Create(
-		statusGlow,
-		TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, -1, false),
-		{ Size = UDim2.fromOffset(22, 22), BackgroundTransparency = 1 }
-	)
-	tw:Play()
-	return tw
-end
-
-local activeGlowTween: Tween? = nil
-
-local function setOnlineStatus(online: boolean)
-	QUEST_DATA.statusOnline = online
-	statusDot.BackgroundColor3 = online and COLORS.green or COLORS.red
-	statusGlow.BackgroundColor3 = COLORS.green
-
-	if activeGlowTween then
-		activeGlowTween:Cancel()
-		activeGlowTween = nil
-	end
-
-	if online then
-		activeGlowTween = playGlowLoop()
-	else
-		statusGlow.BackgroundTransparency = 1
-	end
-end
-
-----------------------------------------------------------------
--- 3. AVATAR THẬT CỦA PLAYER
-----------------------------------------------------------------
-
-local avatarImage = new("ImageLabel", {
-	Name = "Avatar",
-	AnchorPoint = Vector2.new(0, 0.5),
-	Position = UDim2.new(0, 32, 0.5, 0),
-	Size = UDim2.fromOffset(28, 28),
-	BackgroundColor3 = Color3.fromRGB(40, 40, 42),
-	BackgroundTransparency = 1,
-	BorderSizePixel = 0,
-	ImageTransparency = 1,
-	Image = "",
-}, { new("UICorner", { CornerRadius = UDim.new(1, 0) }) })
-avatarImage.Parent = root
-
-task.spawn(function()
-	local ok, content = pcall(function()
-		return Players:GetUserThumbnailAsync(
-			player.UserId,
-			Enum.ThumbnailType.HeadShot,
-			Enum.ThumbnailSize.Size100x100
-		)
-	end)
-	if ok and content then
-		avatarImage.Image = content
-	end
-end)
-
-----------------------------------------------------------------
--- Text hiển thị trên pill (nhiệm vụ)
-----------------------------------------------------------------
-
-local pillLabel = new("TextLabel", {
+new("TextLabel", {
 	Name = "PillText",
+	Position = UDim2.new(0, 62, 0.5, 0),
 	AnchorPoint = Vector2.new(0, 0.5),
-	Position = UDim2.new(0, 70, 0.5, 0),
-	Size = UDim2.new(1, -84, 1, 0),
+	Size = UDim2.new(1, -76, 1, 0),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamBold,
 	TextSize = 13,
 	TextColor3 = COLORS.text,
-	TextTransparency = 1,
 	TextXAlignment = Enum.TextXAlignment.Left,
 	TextTruncate = Enum.TextTruncate.AtEnd,
 	Text = QUEST_DATA.pillText,
-}, {})
-pillLabel.Parent = root
+}).Parent = pillLayer
 
 ----------------------------------------------------------------
--- Thẻ mở rộng khi kéo xuống — GIỐNG ẢNH MẪU:
--- icon vuông bo góc bên trái, tiêu đề + mô tả nhiều dòng bên phải,
--- hàng nút chức năng ở dưới cùng.
+-- LAYER 3: Player (nghe nhạc) — 1. avatar + trạng thái ở TRÊN CÙNG
 ----------------------------------------------------------------
 
-local card = new("Frame", {
-	Name = "ExpandedCard",
+local playerLayer = new("Frame", {
+	Name = "PlayerLayer",
 	Size = UDim2.fromScale(1, 1),
 	BackgroundTransparency = 1,
+	Visible = false,
 }, {
 	new("UIPadding", {
 		PaddingLeft = UDim.new(0, 18),
 		PaddingRight = UDim.new(0, 18),
-		PaddingTop = UDim.new(0, 18),
+		PaddingTop = UDim.new(0, 16),
 		PaddingBottom = UDim.new(0, 14),
 	}),
 })
-card.Parent = root
+playerLayer.Parent = root
 
--- Icon vật phẩm, góc trên-trái, bo góc mềm giống ảnh
-local cardIcon = new("ImageLabel", {
-	Name = "ItemIcon",
+-- Header: avatar + trạng thái CỐ ĐỊNH ở đầu bảng, không trôi giữa nữa
+local headerRow = new("Frame", {
+	Name = "HeaderRow",
+	Size = UDim2.new(1, 0, 0, 26),
 	Position = UDim2.fromOffset(0, 0),
-	Size = UDim2.fromOffset(52, 52),
-	BackgroundColor3 = Color3.fromRGB(235, 235, 235),
-	BorderSizePixel = 0,
-	Image = QUEST_DATA.itemIconId,
-	ImageTransparency = 1,
 	BackgroundTransparency = 1,
-	ScaleType = Enum.ScaleType.Fit,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 12) }) })
-cardIcon.Parent = card
+})
+headerRow.Parent = playerLayer
 
--- Tiêu đề, nằm bên phải icon
-local cardTitle = new("TextLabel", {
-	Name = "ItemTitle",
-	Position = UDim2.new(0, 66, 0, 2),
-	Size = UDim2.new(1, -66, 0, 20),
+createStatusAvatar(headerRow, 22, 8, UDim2.fromOffset(0, 0), Vector2.new(0, 0))
+
+new("TextLabel", {
+	Name = "HeaderName",
+	Position = UDim2.fromOffset(34, 0),
+	Size = UDim2.new(1, -34, 1, 0),
 	BackgroundTransparency = 1,
 	Font = Enum.Font.GothamBold,
-	TextSize = 17,
-	TextColor3 = COLORS.text,
-	TextTransparency = 1,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	Text = QUEST_DATA.itemTitle,
-}, {})
-cardTitle.Parent = card
-
--- Mô tả, xuống dòng nhiều dòng như trong ảnh
-local cardDesc = new("TextLabel", {
-	Name = "ItemDescription",
-	Position = UDim2.new(0, 66, 0, 24),
-	Size = UDim2.new(1, -66, 0, 62),
-	BackgroundTransparency = 1,
-	Font = Enum.Font.Gotham,
 	TextSize = 12,
 	TextColor3 = COLORS.dim,
-	TextTransparency = 1,
-	TextWrapped = true,
 	TextXAlignment = Enum.TextXAlignment.Left,
-	TextYAlignment = Enum.TextYAlignment.Top,
-	Text = QUEST_DATA.itemDescription,
-}, {})
-cardDesc.Parent = card
+	Text = player.Name,
+}).Parent = headerRow
 
--- Đường kẻ mảnh phân tách nội dung và hàng nút (tinh tế, không bắt buộc)
-local divider = new("Frame", {
-	Name = "Divider",
-	Position = UDim2.new(0, 0, 0, 94),
-	Size = UDim2.new(1, 0, 0, 1),
-	BackgroundColor3 = Color3.fromRGB(40, 40, 42),
-	BackgroundTransparency = 1,
+-- Album art
+local albumArt = new("Frame", {
+	Name = "AlbumArt",
+	Position = UDim2.new(0.5, 0, 0, 40),
+	AnchorPoint = Vector2.new(0.5, 0),
+	Size = UDim2.fromOffset(96, 96),
+	BackgroundColor3 = Color3.fromRGB(45, 45, 48),
 	BorderSizePixel = 0,
-}, {})
-divider.Parent = card
+}, { corner(16) })
+albumArt.Parent = playerLayer
 
--- Hàng nút chức năng — thêm/bớt nút tại đây khi cần
-local buttonRow = new("Frame", {
-	Name = "ButtonRow",
-	Position = UDim2.new(0, 0, 0, 106),
+new("TextLabel", {
+	Name = "AlbumArtIcon",
+	Size = UDim2.fromScale(1, 1),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	TextSize = 28,
+	TextColor3 = COLORS.dim,
+	Text = "♪",
+}).Parent = albumArt
+
+-- Tiêu đề bài hát hiện tại
+local nowPlayingLabel = new("TextLabel", {
+	Name = "NowPlaying",
+	Position = UDim2.new(0.5, 0, 0, 146),
+	AnchorPoint = Vector2.new(0.5, 0),
+	Size = UDim2.new(1, -20, 0, 18),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	TextSize = 13,
+	TextColor3 = COLORS.text,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	Text = QUEST_DATA.nowPlayingTitle,
+})
+nowPlayingLabel.Parent = playerLayer
+
+-- Hàng điều khiển play
+local controlsRow = new("Frame", {
+	Name = "Controls",
+	Position = UDim2.new(0.5, 0, 0, 170),
+	AnchorPoint = Vector2.new(0.5, 0),
+	Size = UDim2.fromOffset(120, 26),
+	BackgroundTransparency = 1,
+}, {
+	new("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		Padding = UDim.new(0, 22),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	}),
+})
+controlsRow.Parent = playerLayer
+
+local playPauseButton = new("TextButton", {
+	Name = "PlayPause",
+	Size = UDim2.fromOffset(26, 26),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	TextSize = 18,
+	TextColor3 = COLORS.text,
+	AutoButtonColor = false,
+	Text = "▶",
+	LayoutOrder = 2,
+})
+playPauseButton.Parent = controlsRow
+
+new("TextLabel", {
+	Size = UDim2.fromOffset(20, 26),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	TextSize = 15,
+	TextColor3 = COLORS.dim,
+	Text = "⏮",
+	LayoutOrder = 1,
+}).Parent = controlsRow
+
+new("TextLabel", {
+	Size = UDim2.fromOffset(20, 26),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	TextSize = 15,
+	TextColor3 = COLORS.dim,
+	Text = "⏭",
+	LayoutOrder = 3,
+}).Parent = controlsRow
+
+-- 4. Ô nhập link YouTube + nút Phát
+local linkRow = new("Frame", {
+	Name = "LinkRow",
+	Position = UDim2.new(0, 0, 1, -34),
 	Size = UDim2.new(1, 0, 0, 30),
 	BackgroundTransparency = 1,
 }, {
 	new("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
-		HorizontalAlignment = Enum.HorizontalAlignment.Right,
 		VerticalAlignment = Enum.VerticalAlignment.Center,
 		Padding = UDim.new(0, 8),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 	}),
 })
-buttonRow.Parent = card
+linkRow.Parent = playerLayer
 
--- Ví dụ 1 nút chức năng có sẵn: đóng thẻ. Copy khối bên dưới để thêm nút khác
--- (ví dụ "Nhận thưởng", "Xem bản đồ"...) — chỉ cần đổi Text và nối sự kiện Click.
-local closeButton = new("TextButton", {
-	Name = "CloseButton",
-	Size = UDim2.fromOffset(72, 26),
+local linkInput = new("TextBox", {
+	Name = "YoutubeLinkInput",
+	Size = UDim2.fromOffset(178, 30),
+	BackgroundColor3 = COLORS.inputBg,
+	BorderSizePixel = 0,
+	Font = Enum.Font.Gotham,
+	TextSize = 12,
+	TextColor3 = COLORS.text,
+	PlaceholderText = "Dán link YouTube...",
+	PlaceholderColor3 = COLORS.dim,
+	ClearTextOnFocus = false,
+	Text = "",
+	TextXAlignment = Enum.TextXAlignment.Left,
+	LayoutOrder = 1,
+}, {
+	corner(999),
+	new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) }),
+})
+linkInput.Parent = linkRow
+
+local playLinkButton = new("TextButton", {
+	Name = "PlayLinkButton",
+	Size = UDim2.fromOffset(70, 30),
 	BackgroundColor3 = COLORS.buttonBg,
 	BorderSizePixel = 0,
 	Font = Enum.Font.GothamBold,
 	TextSize = 12,
 	TextColor3 = COLORS.text,
-	TextTransparency = 1,
 	AutoButtonColor = false,
-	Text = "Đóng",
-	LayoutOrder = 1,
-}, { new("UICorner", { CornerRadius = UDim.new(0, 999) }) })
-closeButton.Parent = buttonRow
-
-local cardElements = { cardIcon, cardTitle, cardDesc }
-local cardButtons = { closeButton } -- thêm nút mới vào đây để nó fade cùng lúc
+	Text = "Phát",
+	LayoutOrder = 2,
+}, { corner(999) })
+playLinkButton.Parent = linkRow
 
 ----------------------------------------------------------------
--- Chuyển đổi Pill <-> Card (kéo xuống)
+-- Âm thanh: chỉ phát được asset đã tải lên Roblox, KHÔNG stream thẳng
+-- từ YouTube (Roblox không hỗ trợ URL ngoài cho SoundId).
+----------------------------------------------------------------
+
+local nowPlayingSound = new("Sound", { Name = "NowPlayingSound", Volume = 0.5 })
+nowPlayingSound.Parent = root
+
+local function playFromYoutubeLink(link: string)
+	local trimmed = link:gsub("^%s+", ""):gsub("%s+$", "")
+	if trimmed == "" then
+		return
+	end
+
+	local assetId = YOUTUBE_TO_ASSET[trimmed]
+	if not assetId then
+		-- Chưa có asset tương ứng: báo cho người chơi biết, KHÔNG cố tải
+		-- trực tiếp từ YouTube vì Roblox không hỗ trợ và vi phạm bản quyền.
+		nowPlayingLabel.Text = "Chưa có bài hát này (cần thêm asset id)"
+		return
+	end
+
+	nowPlayingSound.SoundId = assetId
+	nowPlayingSound:Play()
+	nowPlayingLabel.Text = "Đang phát..."
+	playPauseButton.Text = "⏸"
+end
+
+playLinkButton.MouseButton1Click:Connect(function()
+	playFromYoutubeLink(linkInput.Text)
+end)
+
+linkInput.FocusLost:Connect(function(enterPressed)
+	if enterPressed then
+		playFromYoutubeLink(linkInput.Text)
+	end
+end)
+
+playPauseButton.MouseButton1Click:Connect(function()
+	if nowPlayingSound.SoundId == "" then
+		return
+	end
+	if nowPlayingSound.IsPlaying then
+		nowPlayingSound:Pause()
+		playPauseButton.Text = "▶"
+	else
+		nowPlayingSound:Resume()
+		playPauseButton.Text = "⏸"
+	end
+end)
+
+----------------------------------------------------------------
+-- Chuyển trạng thái (idle <-> player) qua Visible, KHÔNG dựa transparency
 ----------------------------------------------------------------
 
 local isExpanded = false
 local isAnimating = false
 local introPlaying = true
+
+local function showLayer(target: Frame)
+	welcomeLayer.Visible = (target == welcomeLayer)
+	pillLayer.Visible = (target == pillLayer)
+	playerLayer.Visible = (target == playerLayer)
+end
 
 local function expand()
 	if isExpanded or isAnimating or introPlaying then
@@ -355,19 +500,11 @@ local function expand()
 	isAnimating = true
 	isExpanded = true
 
-	TweenService:Create(root, EASE_SNAP, { Size = CARD_SIZE, Position = FIXED_POSITION }):Play()
-	TweenService:Create(rootCorner, EASE_CORNER, { CornerRadius = UDim.new(0, CARD_CORNER) }):Play()
+	TweenService:Create(root, EASE_SNAP, { Size = PLAYER_SIZE, Position = FIXED_POSITION }):Play()
+	TweenService:Create(rootCorner, EASE_CORNER, { CornerRadius = UDim.new(0, PLAYER_CORNER) }):Play()
 
-	TweenService:Create(pillLabel, EASE_FADE, { TextTransparency = 1 }):Play()
-
-	task.delay(0.15, function()
-		for _, el in ipairs(cardElements) do
-			TweenService:Create(el, EASE_FADE, { TextTransparency = 0, ImageTransparency = 0 }):Play()
-		end
-		TweenService:Create(divider, EASE_FADE, { BackgroundTransparency = 0.5 }):Play()
-		for _, btn in ipairs(cardButtons) do
-			TweenService:Create(btn, EASE_FADE, { TextTransparency = 0 }):Play()
-		end
+	task.delay(0.2, function()
+		showLayer(playerLayer)
 		isAnimating = false
 	end)
 end
@@ -379,29 +516,18 @@ local function collapse()
 	isAnimating = true
 	isExpanded = false
 
-	for _, el in ipairs(cardElements) do
-		TweenService:Create(el, EASE_FADE, { TextTransparency = 1, ImageTransparency = 1 }):Play()
-	end
-	TweenService:Create(divider, EASE_FADE, { BackgroundTransparency = 1 }):Play()
-	for _, btn in ipairs(cardButtons) do
-		TweenService:Create(btn, EASE_FADE, { TextTransparency = 1 }):Play()
-	end
+	showLayer(pillLayer)
 
 	TweenService:Create(root, EASE_SNAP, { Size = PILL_SIZE, Position = FIXED_POSITION }):Play()
 	TweenService:Create(rootCorner, EASE_CORNER, { CornerRadius = UDim.new(0, PILL_CORNER) }):Play()
 
-	task.delay(0.2, function()
-		TweenService:Create(pillLabel, EASE_FADE, { TextTransparency = 0 }):Play()
+	task.delay(0.3, function()
 		isAnimating = false
 	end)
 end
 
-closeButton.MouseButton1Click:Connect(function()
-	collapse()
-end)
-
 ----------------------------------------------------------------
--- Cử chỉ kéo xuống (không cho di chuyển tự do)
+-- Cử chỉ kéo xuống (pill cố định vị trí, chỉ quyết định bung/thu)
 ----------------------------------------------------------------
 
 local dragging = false
@@ -409,8 +535,12 @@ local dragStartY = 0
 local dragConnection: RBXScriptConnection? = nil
 local dragEndConnection: RBXScriptConnection? = nil
 
-local function onInputBegan(input: InputObject)
+root.InputBegan:Connect(function(input)
 	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+		return
+	end
+	-- không bắt kéo khi đang thao tác trong ô nhập link
+	if linkInput:IsFocused() then
 		return
 	end
 	if isAnimating or introPlaying then
@@ -449,35 +579,25 @@ local function onInputBegan(input: InputObject)
 			end
 		end
 	end)
-end
-
-root.InputBegan:Connect(onInputBegan)
+end)
 
 ----------------------------------------------------------------
--- 0. Hiệu ứng WELCOME lúc mở game
+-- 0. Hiệu ứng welcome lúc vào game — 2. đảm bảo chữ LUÔN hiện đúng
 ----------------------------------------------------------------
 
 local function playIntro()
+	showLayer(welcomeLayer)
 	TweenService:Create(root, EASE_INTRO, { Size = WELCOME_SIZE }):Play()
-	local welcomeIn = TweenService:Create(welcomeLabel, EASE_FADE, { TextTransparency = 0 })
-	task.wait(0.2)
-	welcomeIn:Play()
+	task.wait(1.8)
 
-	task.wait(1.6)
-
-	local welcomeOut = TweenService:Create(welcomeLabel, EASE_FADE, { TextTransparency = 1 })
-	welcomeOut:Play()
 	TweenService:Create(root, EASE_SNAP, { Size = TINY_SIZE }):Play()
 	task.wait(0.35)
 
 	introPlaying = false
+	showLayer(pillLayer)
+	refreshStatusVisual(QUEST_DATA.statusOnline)
 	TweenService:Create(root, EASE_SNAP, { Size = PILL_SIZE }):Play()
 	TweenService:Create(rootCorner, EASE_CORNER, { CornerRadius = UDim.new(0, PILL_CORNER) }):Play()
-	task.wait(0.2)
-	TweenService:Create(pillLabel, EASE_FADE, { TextTransparency = 0 }):Play()
-	TweenService:Create(statusDot, EASE_FADE, { BackgroundTransparency = 0 }):Play()
-	TweenService:Create(avatarImage, EASE_FADE, { ImageTransparency = 0, BackgroundTransparency = 0 }):Play()
-	setOnlineStatus(QUEST_DATA.statusOnline)
 end
 
 ----------------------------------------------------------------
