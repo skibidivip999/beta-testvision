@@ -2,13 +2,6 @@
 --[[
 	QuestTracker.client.luau
 	Đặt file trong StarterPlayer > StarterPlayerScripts.
-
-	Trạng thái: intro (welcome) -> idle (pill nhỏ) -> player (kéo xuống,
-	bảng nghe nhạc: avatar + trạng thái ở trên cùng, album art, điều
-	khiển play, ô nhập link YouTube).
-
-	Mỗi trạng thái là MỘT LAYER RIÊNG, chỉ hiện qua thuộc tính Visible.
-	Cách này tránh lỗi chữ/avatar không hiện do tween Transparency chồng chéo.
 ]]
 
 local Players = game:GetService("Players")
@@ -18,10 +11,6 @@ local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-----------------------------------------------------------------
--- 1. DỮ LIỆU BẠN TỰ ĐIỀN
-----------------------------------------------------------------
-
 local QUEST_DATA = {
 	statusOnline = true,
 	pillText = "Killing Dough king to get Mirror",
@@ -29,15 +18,8 @@ local QUEST_DATA = {
 	nowPlayingTitle = "Chưa phát bài nào",
 }
 
--- Bảng tra cứu: link YouTube -> rbxassetid bạn ĐÃ TỰ TẢI LÊN Roblox
--- (Roblox không cho stream trực tiếp từ URL ngoài, phải map sang asset
--- đã có bản quyền/qua kiểm duyệt). Tự thêm dòng của bạn vào đây.
-local YOUTUBE_TO_ASSET: { [string]: string } = {
-	-- ["https://youtu.be/xxxxxxxxxxx"] = "rbxassetid://123456789",
-}
-
 ----------------------------------------------------------------
--- Bảng màu / hằng số
+-- Bảng màu / Hằng số
 ----------------------------------------------------------------
 
 local COLORS = {
@@ -54,7 +36,7 @@ local COLORS = {
 local TINY_SIZE = UDim2.fromOffset(44, 44)
 local WELCOME_SIZE = UDim2.fromOffset(230, 44)
 local PILL_SIZE = UDim2.fromOffset(260, 44)
-local PLAYER_SIZE = UDim2.fromOffset(300, 260) -- bảng nghe nhạc, cao hơn hẳn
+local PLAYER_SIZE = UDim2.fromOffset(300, 260)
 local FIXED_POSITION = UDim2.new(0.5, 0, 0, 24)
 
 local PILL_CORNER = 999
@@ -115,7 +97,6 @@ local root = new("ImageButton", {
 })
 root.Parent = screenGui
 
--- helper tạo avatar + chấm trạng thái (dùng lại được ở nhiều nơi)
 local statusRefs: { { dot: Frame, glow: Frame } } = {}
 
 local function createStatusAvatar(parent: Instance, avatarSize: number, dotSize: number, position: UDim2, anchor: Vector2)
@@ -222,7 +203,7 @@ new("TextLabel", {
 }).Parent = welcomeLayer
 
 ----------------------------------------------------------------
--- LAYER 2: Pill (idle) — 1. avatar + trạng thái nằm bên trái, giữa hàng
+-- LAYER 2: Pill (idle)
 ----------------------------------------------------------------
 
 local pillLayer = new("Frame", {
@@ -250,7 +231,7 @@ new("TextLabel", {
 }).Parent = pillLayer
 
 ----------------------------------------------------------------
--- LAYER 3: Player (nghe nhạc) — 1. avatar + trạng thái ở TRÊN CÙNG
+-- LAYER 3: Player (Music UI)
 ----------------------------------------------------------------
 
 local playerLayer = new("Frame", {
@@ -268,7 +249,6 @@ local playerLayer = new("Frame", {
 })
 playerLayer.Parent = root
 
--- Header: avatar + trạng thái CỐ ĐỊNH ở đầu bảng, không trôi giữa nữa
 local headerRow = new("Frame", {
 	Name = "HeaderRow",
 	Size = UDim2.new(1, 0, 0, 26),
@@ -291,7 +271,6 @@ new("TextLabel", {
 	Text = player.Name,
 }).Parent = headerRow
 
--- Album art
 local albumArt = new("Frame", {
 	Name = "AlbumArt",
 	Position = UDim2.new(0.5, 0, 0, 40),
@@ -312,7 +291,6 @@ new("TextLabel", {
 	Text = "♪",
 }).Parent = albumArt
 
--- Tiêu đề bài hát hiện tại
 local nowPlayingLabel = new("TextLabel", {
 	Name = "NowPlaying",
 	Position = UDim2.new(0.5, 0, 0, 146),
@@ -327,7 +305,6 @@ local nowPlayingLabel = new("TextLabel", {
 })
 nowPlayingLabel.Parent = playerLayer
 
--- Hàng điều khiển play
 local controlsRow = new("Frame", {
 	Name = "Controls",
 	Position = UDim2.new(0.5, 0, 0, 170),
@@ -378,7 +355,7 @@ new("TextLabel", {
 	LayoutOrder = 3,
 }).Parent = controlsRow
 
--- 4. Ô nhập link YouTube + nút Phát
+-- 4. Ô nhập Audio ID + nút Phát
 local linkRow = new("Frame", {
 	Name = "LinkRow",
 	Position = UDim2.new(0, 0, 1, -34),
@@ -395,17 +372,17 @@ local linkRow = new("Frame", {
 linkRow.Parent = playerLayer
 
 local linkInput = new("TextBox", {
-	Name = "YoutubeLinkInput",
+	Name = "AudioIdInput",
 	Size = UDim2.fromOffset(178, 30),
 	BackgroundColor3 = COLORS.inputBg,
 	BorderSizePixel = 0,
 	Font = Enum.Font.Gotham,
 	TextSize = 12,
 	TextColor3 = COLORS.text,
-	PlaceholderText = "Dán link YouTube...",
+	PlaceholderText = "Nhập ID nhạc...",
 	PlaceholderColor3 = COLORS.dim,
 	ClearTextOnFocus = false,
-	Text = "",
+	Text = "1837879082", -- Điền sẵn 1 ID mẫu để test
 	TextXAlignment = Enum.TextXAlignment.Left,
 	LayoutOrder = 1,
 }, {
@@ -429,40 +406,40 @@ local playLinkButton = new("TextButton", {
 playLinkButton.Parent = linkRow
 
 ----------------------------------------------------------------
--- Âm thanh: chỉ phát được asset đã tải lên Roblox, KHÔNG stream thẳng
--- từ YouTube (Roblox không hỗ trợ URL ngoài cho SoundId).
+-- Logic phát âm thanh qua Audio ID
 ----------------------------------------------------------------
 
 local nowPlayingSound = new("Sound", { Name = "NowPlayingSound", Volume = 0.5 })
 nowPlayingSound.Parent = root
 
-local function playFromYoutubeLink(link: string)
-	local trimmed = link:gsub("^%s+", ""):gsub("%s+$", "")
-	if trimmed == "" then
+local function playFromAudioID(inputText: string)
+	-- Lọc chỉ lấy các chữ số từ ô nhập (tránh người chơi gõ nhầm chữ)
+	local id = inputText:match("%d+")
+	
+	if not id then
+		nowPlayingLabel.Text = "ID không hợp lệ!"
 		return
 	end
 
-	local assetId = YOUTUBE_TO_ASSET[trimmed]
-	if not assetId then
-		-- Chưa có asset tương ứng: báo cho người chơi biết, KHÔNG cố tải
-		-- trực tiếp từ YouTube vì Roblox không hỗ trợ và vi phạm bản quyền.
-		nowPlayingLabel.Text = "Chưa có bài hát này (cần thêm asset id)"
-		return
+	-- Gắn ID vào định dạng rbxassetid:// của Roblox
+	nowPlayingSound.SoundId = "rbxassetid://" .. id
+	
+	if not nowPlayingSound.IsLoaded then
+		nowPlayingLabel.Text = "Đang tải..."
 	end
-
-	nowPlayingSound.SoundId = assetId
+	
 	nowPlayingSound:Play()
-	nowPlayingLabel.Text = "Đang phát..."
+	nowPlayingLabel.Text = "Đang phát ID: " .. id
 	playPauseButton.Text = "⏸"
 end
 
 playLinkButton.MouseButton1Click:Connect(function()
-	playFromYoutubeLink(linkInput.Text)
+	playFromAudioID(linkInput.Text)
 end)
 
 linkInput.FocusLost:Connect(function(enterPressed)
 	if enterPressed then
-		playFromYoutubeLink(linkInput.Text)
+		playFromAudioID(linkInput.Text)
 	end
 end)
 
@@ -480,7 +457,7 @@ playPauseButton.MouseButton1Click:Connect(function()
 end)
 
 ----------------------------------------------------------------
--- Chuyển trạng thái (idle <-> player) qua Visible, KHÔNG dựa transparency
+-- Quản lý chuyển trạng thái UI (Kéo lên/xuống)
 ----------------------------------------------------------------
 
 local isExpanded = false
@@ -494,9 +471,7 @@ local function showLayer(target: Frame)
 end
 
 local function expand()
-	if isExpanded or isAnimating or introPlaying then
-		return
-	end
+	if isExpanded or isAnimating or introPlaying then return end
 	isAnimating = true
 	isExpanded = true
 
@@ -510,9 +485,7 @@ local function expand()
 end
 
 local function collapse()
-	if not isExpanded or isAnimating or introPlaying then
-		return
-	end
+	if not isExpanded or isAnimating or introPlaying then return end
 	isAnimating = true
 	isExpanded = false
 
@@ -527,7 +500,7 @@ local function collapse()
 end
 
 ----------------------------------------------------------------
--- Cử chỉ kéo xuống (pill cố định vị trí, chỉ quyết định bung/thu)
+-- Cử chỉ Vuốt / Kéo
 ----------------------------------------------------------------
 
 local dragging = false
@@ -536,27 +509,17 @@ local dragConnection: RBXScriptConnection? = nil
 local dragEndConnection: RBXScriptConnection? = nil
 
 root.InputBegan:Connect(function(input)
-	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
-		return
-	end
-	-- không bắt kéo khi đang thao tác trong ô nhập link
-	if linkInput:IsFocused() then
-		return
-	end
-	if isAnimating or introPlaying then
-		return
-	end
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+	if linkInput:IsFocused() then return end
+	if isAnimating or introPlaying then return end
 
 	dragging = true
 	dragStartY = input.Position.Y
 
 	dragConnection = UserInputService.InputChanged:Connect(function(moveInput)
-		if not dragging then
-			return
-		end
-		if moveInput.UserInputType ~= Enum.UserInputType.MouseMovement and moveInput.UserInputType ~= Enum.UserInputType.Touch then
-			return
-		end
+		if not dragging then return end
+		if moveInput.UserInputType ~= Enum.UserInputType.MouseMovement and moveInput.UserInputType ~= Enum.UserInputType.Touch then return end
+		
 		local deltaY = moveInput.Position.Y - dragStartY
 
 		if not isExpanded and deltaY > DRAG_THRESHOLD then
@@ -569,20 +532,14 @@ root.InputBegan:Connect(function(input)
 	dragEndConnection = UserInputService.InputEnded:Connect(function(endInput)
 		if endInput.UserInputType == Enum.UserInputType.MouseButton1 or endInput.UserInputType == Enum.UserInputType.Touch then
 			dragging = false
-			if dragConnection then
-				dragConnection:Disconnect()
-				dragConnection = nil
-			end
-			if dragEndConnection then
-				dragEndConnection:Disconnect()
-				dragEndConnection = nil
-			end
+			if dragConnection then dragConnection:Disconnect(); dragConnection = nil end
+			if dragEndConnection then dragEndConnection:Disconnect(); dragEndConnection = nil end
 		end
 	end)
 end)
 
 ----------------------------------------------------------------
--- 0. Hiệu ứng welcome lúc vào game — 2. đảm bảo chữ LUÔN hiện đúng
+-- Hiệu ứng Chào mừng (Intro)
 ----------------------------------------------------------------
 
 local function playIntro()
@@ -599,10 +556,6 @@ local function playIntro()
 	TweenService:Create(root, EASE_SNAP, { Size = PILL_SIZE }):Play()
 	TweenService:Create(rootCorner, EASE_CORNER, { CornerRadius = UDim.new(0, PILL_CORNER) }):Play()
 end
-
-----------------------------------------------------------------
--- Khởi động
-----------------------------------------------------------------
 
 screenGui.Parent = playerGui
 task.spawn(playIntro)
