@@ -1,7 +1,3 @@
--- ============================================================
--- VERA HUB · Blox Fruits Auto Farm + Dynamic Island
--- Insert key = toggle main window
--- ============================================================
 
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
@@ -19,7 +15,6 @@ end
 local existing = parentGui:FindFirstChild("VeraHub")
 if existing then existing:Destroy() end
 
--- ==================== CONFIG ====================
 local MAX_LEVEL = 2600   -- bump if Blox Fruits raises cap
 
 local Config = {
@@ -35,7 +30,6 @@ local Config = {
     AntiAFK          = true,
 }
 
--- ==================== THEME ====================
 local T = {
     Bg       = Color3.fromRGB(15, 15, 22),
     Surface  = Color3.fromRGB(23, 23, 34),
@@ -52,7 +46,6 @@ local T = {
     FontBold = Enum.Font.GothamBold,
 }
 
--- ==================== HELPERS ====================
 local function new(class, props, parent)
     local o = Instance.new(class)
     for k, v in pairs(props or {}) do o[k] = v end
@@ -80,15 +73,12 @@ local function getLevel()
     return 0
 end
 
--- ==================== SCREENGUI ====================
+
 local ScreenGui = new("ScreenGui", {
     Name = "VeraHub", ResetOnSpawn = false, IgnoreGuiInset = true,
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 999,
 }, parentGui)
 
--- ============================================================
--- DYNAMIC ISLAND
--- ============================================================
 local islandContent
 local IslandState = { current = "loading" }
 local spinnerToken = 0
@@ -324,7 +314,6 @@ local function islandSetMax()
     end)
 end
 
--- init sequence
 task.spawn(function()
     islandSetLoading()
     task.wait(1.2)
@@ -333,7 +322,6 @@ task.spawn(function()
     islandSetIdle()
 end)
 
--- poll for level / state sync
 task.spawn(function()
     while ScreenGui.Parent do
         task.wait(0.2)
@@ -353,9 +341,6 @@ task.spawn(function()
     end
 end)
 
--- ============================================================
--- MAIN WINDOW
--- ============================================================
 local Main = new("Frame", {
     Size = UDim2.new(0, 500, 0, 400),
     Position = UDim2.new(0.5, -250, 0.5, -200),
@@ -383,7 +368,6 @@ function toggleMain(show)
     end
 end
 
--- header
 local Header = new("Frame", {
     Size = UDim2.new(1, 0, 0, 64), BackgroundColor3 = T.Surface, BorderSizePixel = 0,
 }, Main)
@@ -422,7 +406,6 @@ CloseBtn.MouseLeave:Connect(function()
 end)
 CloseBtn.MouseButton1Click:Connect(function() toggleMain(false) end)
 
--- drag
 do
     local dragging, dragStart, startPos
     Header.InputBegan:Connect(function(i)
@@ -443,7 +426,6 @@ do
     end)
 end
 
--- body
 local Body = new("Frame", {
     Size = UDim2.new(1, 0, 1, -64), Position = UDim2.new(0, 0, 0, 64),
     BackgroundTransparency = 1,
@@ -463,7 +445,6 @@ new("UIPadding", {
     PaddingRight = UDim.new(0, 14), PaddingBottom = UDim.new(0, 12),
 }, Content)
 
--- tabs
 local tabs, pages, activeTab = {}, {}, nil
 local function switchTab(name)
     if activeTab == name then return end
@@ -507,7 +488,6 @@ local function createTab(name, label)
     return page
 end
 
--- components
 local function section(parent, text)
     local f = new("Frame", { Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1 }, parent)
     new("TextLabel", {
