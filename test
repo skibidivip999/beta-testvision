@@ -1,0 +1,732 @@
+-- ============================================================
+-- VERA HUB · Blox Fruits Auto Farm + Dynamic Island
+-- Insert key = toggle main window
+-- ============================================================
+
+local Players          = game:GetService("Players")
+local TweenService     = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService       = game:GetService("RunService")
+local Workspace        = game:GetService("Workspace")
+local VirtualUser      = game:GetService("VirtualUser")
+local LocalPlayer      = Players.LocalPlayer
+
+local parentGui
+do
+    local ok, cg = pcall(function() return game:GetService("CoreGui") end)
+    parentGui = (ok and cg) or LocalPlayer:WaitForChild("PlayerGui")
+end
+local existing = parentGui:FindFirstChild("VeraHub")
+if existing then existing:Destroy() end
+
+-- ==================== CONFIG ====================
+local MAX_LEVEL = 2600   -- bump if Blox Fruits raises cap
+
+local Config = {
+    AutoFarm         = false,
+    BringMob         = true,
+    AutoQuest        = true,
+    FastAttack       = false,
+    FastAttackSpeed  = 0.15,
+    AutoHaki         = true,
+    AutoObservation  = true,
+    TweenSpeed       = 200,
+    MaxTweenDistance = 300,
+    AntiAFK          = true,
+}
+
+-- ==================== THEME ====================
+local T = {
+    Bg       = Color3.fromRGB(15, 15, 22),
+    Surface  = Color3.fromRGB(23, 23, 34),
+    Surface2 = Color3.fromRGB(30, 30, 44),
+    Border   = Color3.fromRGB(45, 45, 65),
+    Text     = Color3.fromRGB(235, 235, 245),
+    Dim      = Color3.fromRGB(140, 145, 165),
+    Accent   = Color3.fromRGB(139, 92, 246),
+    Accent2  = Color3.fromRGB(99, 102, 241),
+    Success  = Color3.fromRGB(52, 211, 153),
+    Danger   = Color3.fromRGB(239, 68, 68),
+    Gold     = Color3.fromRGB(255, 200, 80),
+    Font     = Enum.Font.GothamMedium,
+    FontBold = Enum.Font.GothamBold,
+}
+
+-- ==================== HELPERS ====================
+local function new(class, props, parent)
+    local o = Instance.new(class)
+    for k, v in pairs(props or {}) do o[k] = v end
+    if parent then o.Parent = parent end
+    return o
+end
+local function corner(p, r) return new("UICorner", { CornerRadius = UDim.new(0, r) }, p) end
+local function stroke(p, c, t) return new("UIStroke", { Color = c or T.Border, Thickness = t or 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, p) end
+
+local function getLevel()
+    local p = LocalPlayer
+    local attr = p:GetAttribute("Level")
+    if attr then local n = tonumber(attr); if n then return math.floor(n) end end
+    local data = p:FindFirstChild("Data")
+    if data then
+        local l = data:FindFirstChild("Level")
+        if l and l:IsA("ValueBase") then
+            local n = tonumber(l.Value); if n then return math.floor(n) end
+        end
+    end
+    local l = p:FindFirstChild("Level")
+    if l and l:IsA("ValueBase") then
+        local n = tonumber(l.Value); if n then return math.floor(n) end
+    end
+    return 0
+end
+
+-- ==================== SCREENGUI ====================
+local ScreenGui = new("ScreenGui", {
+    Name = "VeraHub", ResetOnSpawn = false, IgnoreGuiInset = true,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 999,
+}, parentGui)
+
+-- ============================================================
+-- DYNAMIC ISLAND
+-- ============================================================
+local islandContent
+local IslandState = { current = "loading" }
+local spinnerToken = 0
+local currentPulseDot = nil
+
+local Island = new("Frame", {
+    Size = UDim2.new(0, 200, 0, 40),
+    Position = UDim2.new(0.5, 0, 0, 80),
+    AnchorPoint = Vector2.new(0.5, 0),
+    BackgroundColor3 = Color3.fromRGB(8, 8, 14),
+    BackgroundTransparency = 0.05,
+    BorderSizePixel = 0,
+    ClipsDescendants = true,
+    ZIndex = 999,
+}, ScreenGui)
+corner(Island, 20)
+stroke(Island, T.Border, 1)
+
+islandContent = new("Frame", {
+    Size = UDim2.new(1, -20, 1, 0),
+    Position = UDim2.new(0, 10, 0, 0),
+    BackgroundTransparency = 1,
+    ZIndex = 1000,
+}, Island)
+new("UIListLayout", {
+    FillDirection = Enum.FillDirection.Horizontal,
+    Padding = UDim.new(0, 8),
+    VerticalAlignment = Enum.VerticalAlignment.Center,
+    HorizontalAlignment = Enum.HorizontalAlignment.Center,
+    SortOrder = Enum.SortOrder.LayoutOrder,
+}, islandContent)
+
+local function clearIsland()
+    for _, c in ipairs(islandContent:GetChildren()) do
+        if not c:IsA("UIListLayout") then c:Destroy() end
+    end
+    currentPulseDot = nil
+end
+
+local function islandSize(w, h)
+    TweenService:Create(Island, TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0, w, 0, h),
+    }):Play()
+    local c = Island:FindFirstChildOfClass("UICorner")
+    if c then c.CornerRadius = UDim.new(0, math.floor(h / 2)) end
+end
+
+local function makeSpinner(size)
+    local s = new("Frame", {
+        Size = UDim2.new(0, size, 0, size),
+        BackgroundTransparency = 1,
+        LayoutOrder = 1, ZIndex = 1001,
+    })
+    corner(s, math.floor(size / 2))
+    new("UIStroke", {
+        Thickness = 2, Color = Color3.fromRGB(60, 60, 85),
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    }, s)
+    local dot = new("Frame", {
+        Size = UDim2.new(0, 4, 0, 4),
+        Position = UDim2.new(0.5, -2, 0, -1),
+        BackgroundColor3 = T.Accent, BorderSizePixel = 0, ZIndex = 1002,
+    }, s); corner(dot, 2)
+    return s
+end
+
+local function islandSetLoading()
+    IslandState.current = "loading"
+    spinnerToken = spinnerToken + 1
+    local myToken = spinnerToken
+    clearIsland()
+    islandSize(200, 40)
+    local spinner = makeSpinner(16); spinner.Parent = islandContent
+    new("TextLabel", {
+        Size = UDim2.new(0, 140, 1, 0), BackgroundTransparency = 1,
+        Text = "Đang tải...", TextColor3 = T.Text, Font = T.Font, TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2, ZIndex = 1001,
+    }, islandContent)
+    task.spawn(function()
+        while spinnerToken == myToken and spinner.Parent do
+            spinner.Rotation = (spinner.Rotation + 8) % 360
+            task.wait(0.02)
+        end
+    end)
+end
+
+local function islandSetLoaded()
+    IslandState.current = "loaded"
+    spinnerToken = spinnerToken + 1
+    clearIsland()
+    islandSize(160, 40)
+    new("TextLabel", {
+        Size = UDim2.new(0, 22, 1, 0), BackgroundTransparency = 1,
+        Text = "✓", TextColor3 = T.Success, Font = T.FontBold, TextSize = 18,
+        LayoutOrder = 1, ZIndex = 1001,
+    }, islandContent)
+    new("TextLabel", {
+        Size = UDim2.new(0, 110, 1, 0), BackgroundTransparency = 1,
+        Text = "Đã load", TextColor3 = T.Text, Font = T.Font, TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2, ZIndex = 1001,
+    }, islandContent)
+end
+
+-- forward declare (used by idle/farming/max)
+local toggleMain
+
+local function islandSetIdle()
+    IslandState.current = "idle"
+    spinnerToken = spinnerToken + 1
+    clearIsland()
+    islandSize(220, 40)
+
+    local dot = new("Frame", {
+        Size = UDim2.new(0, 8, 0, 8), BackgroundColor3 = T.Success,
+        BorderSizePixel = 0, LayoutOrder = 1, ZIndex = 1001,
+    }); corner(dot, 4); dot.Parent = islandContent
+
+    new("TextLabel", {
+        Size = UDim2.new(0, 100, 1, 0), BackgroundTransparency = 1,
+        Text = "VERA HUB", TextColor3 = T.Text, Font = T.FontBold, TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2, ZIndex = 1001,
+    }, islandContent)
+
+    local playBtn = new("TextButton", {
+        Size = UDim2.new(0, 26, 0, 26),
+        BackgroundColor3 = Config.AutoFarm and T.Danger or T.Success,
+        Text = Config.AutoFarm and "■" or "▶",
+        TextColor3 = Color3.new(1, 1, 1), Font = T.FontBold, TextSize = 12,
+        AutoButtonColor = false, BorderSizePixel = 0, LayoutOrder = 3, ZIndex = 1001,
+    }, islandContent); corner(playBtn, 6)
+    playBtn.MouseButton1Click:Connect(function()
+        Config.AutoFarm = not Config.AutoFarm
+        if Config.AutoFarm then
+            local lvl = getLevel()
+            if lvl >= MAX_LEVEL then islandSetMax() else islandSetFarming(lvl) end
+        else
+            islandSetIdle()
+        end
+    end)
+
+    local menuBtn = new("TextButton", {
+        Size = UDim2.new(0, 26, 0, 26),
+        BackgroundColor3 = T.Surface2, Text = "≡",
+        TextColor3 = T.Text, Font = T.FontBold, TextSize = 15,
+        AutoButtonColor = false, BorderSizePixel = 0, LayoutOrder = 4, ZIndex = 1001,
+    }, islandContent); corner(menuBtn, 6)
+    menuBtn.MouseButton1Click:Connect(function()
+        if toggleMain then toggleMain() end
+    end)
+end
+
+local islandLevelLabel = nil
+local function startPulse(dot)
+    task.spawn(function()
+        while dot.Parent do
+            local t1 = TweenService:Create(dot, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                BackgroundTransparency = 0.65,
+            }); t1:Play(); t1.Completed:Wait()
+            if not dot.Parent then break end
+            local t2 = TweenService:Create(dot, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                BackgroundTransparency = 0,
+            }); t2:Play(); t2.Completed:Wait()
+        end
+    end)
+end
+
+local function islandSetFarming(level)
+    if IslandState.current ~= "farming" then
+        IslandState.current = "farming"
+        spinnerToken = spinnerToken + 1
+        clearIsland()
+        islandSize(250, 40)
+
+        local dot = new("Frame", {
+            Size = UDim2.new(0, 8, 0, 8), BackgroundColor3 = T.Accent,
+            BorderSizePixel = 0, LayoutOrder = 1, ZIndex = 1001,
+        }); corner(dot, 4); dot.Parent = islandContent
+        currentPulseDot = dot
+        startPulse(dot)
+
+        islandLevelLabel = new("TextLabel", {
+            Size = UDim2.new(0, 140, 1, 0), BackgroundTransparency = 1,
+            Text = level > 0 and ("Đang farm · Lv " .. level) or "Đang farm",
+            TextColor3 = T.Text, Font = T.Font, TextSize = 13,
+            TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2, ZIndex = 1001,
+        }, islandContent)
+
+        local pauseBtn = new("TextButton", {
+            Size = UDim2.new(0, 26, 0, 26), BackgroundColor3 = T.Danger,
+            Text = "■", TextColor3 = Color3.new(1, 1, 1), Font = T.FontBold, TextSize = 12,
+            AutoButtonColor = false, BorderSizePixel = 0, LayoutOrder = 3, ZIndex = 1001,
+        }, islandContent); corner(pauseBtn, 6)
+        pauseBtn.MouseButton1Click:Connect(function()
+            Config.AutoFarm = false
+            islandSetIdle()
+        end)
+
+        local menuBtn = new("TextButton", {
+            Size = UDim2.new(0, 26, 0, 26), BackgroundColor3 = T.Surface2,
+            Text = "≡", TextColor3 = T.Text, Font = T.FontBold, TextSize = 15,
+            AutoButtonColor = false, BorderSizePixel = 0, LayoutOrder = 4, ZIndex = 1001,
+        }, islandContent); corner(menuBtn, 6)
+        menuBtn.MouseButton1Click:Connect(function()
+            if toggleMain then toggleMain() end
+        end)
+    elseif islandLevelLabel and islandLevelLabel.Parent then
+        islandLevelLabel.Text = level > 0 and ("Đang farm · Lv " .. level) or "Đang farm"
+    end
+end
+
+local function islandSetMax()
+    IslandState.current = "max"
+    spinnerToken = spinnerToken + 1
+    clearIsland()
+    islandSize(180, 40)
+    new("TextLabel", {
+        Size = UDim2.new(0, 22, 1, 0), BackgroundTransparency = 1,
+        Text = "★", TextColor3 = T.Gold, Font = T.FontBold, TextSize = 17,
+        LayoutOrder = 1, ZIndex = 1001,
+    }, islandContent)
+    new("TextLabel", {
+        Size = UDim2.new(0, 110, 1, 0), BackgroundTransparency = 1,
+        Text = "MAX LV", TextColor3 = T.Gold, Font = T.FontBold, TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2, ZIndex = 1001,
+    }, islandContent)
+    local menuBtn = new("TextButton", {
+        Size = UDim2.new(0, 26, 0, 26), BackgroundColor3 = T.Surface2,
+        Text = "≡", TextColor3 = T.Text, Font = T.FontBold, TextSize = 15,
+        AutoButtonColor = false, BorderSizePixel = 0, LayoutOrder = 3, ZIndex = 1001,
+    }, islandContent); corner(menuBtn, 6)
+    menuBtn.MouseButton1Click:Connect(function()
+        if toggleMain then toggleMain() end
+    end)
+end
+
+-- init sequence
+task.spawn(function()
+    islandSetLoading()
+    task.wait(1.2)
+    islandSetLoaded()
+    task.wait(1.2)
+    islandSetIdle()
+end)
+
+-- poll for level / state sync
+task.spawn(function()
+    while ScreenGui.Parent do
+        task.wait(0.2)
+        if not Island.Parent then continue end
+        local st = IslandState.current
+        if st == "loading" or st == "loaded" then continue end
+        if not Config.AutoFarm then
+            if st ~= "idle" then islandSetIdle() end
+        else
+            local lvl = getLevel()
+            if lvl >= MAX_LEVEL then
+                if st ~= "max" then islandSetMax() end
+            else
+                islandSetFarming(lvl)
+            end
+        end
+    end
+end)
+
+-- ============================================================
+-- MAIN WINDOW
+-- ============================================================
+local Main = new("Frame", {
+    Size = UDim2.new(0, 500, 0, 400),
+    Position = UDim2.new(0.5, -250, 0.5, -200),
+    BackgroundColor3 = T.Bg, BorderSizePixel = 0,
+    ClipsDescendants = true, Visible = false,
+}, ScreenGui)
+corner(Main, 12); stroke(Main, T.Border, 1)
+local UIScale = new("UIScale", { Scale = 1 }, Main)
+
+local hideToken = 0
+function toggleMain(show)
+    if show == nil then show = not Main.Visible end
+    if show then
+        hideToken = hideToken + 1
+        Main.Visible = true
+        UIScale.Scale = 0
+        TweenService:Create(UIScale, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+    else
+        hideToken = hideToken + 1
+        local myToken = hideToken
+        TweenService:Create(UIScale, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.In), { Scale = 0 }):Play()
+        task.delay(0.25, function()
+            if hideToken == myToken then Main.Visible = false end
+        end)
+    end
+end
+
+-- header
+local Header = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 64), BackgroundColor3 = T.Surface, BorderSizePixel = 0,
+}, Main)
+new("UIGradient", {
+    Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(50, 38, 95)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(22, 22, 42)),
+    }), Rotation = 15,
+}, Header)
+new("TextLabel", {
+    Size = UDim2.new(0, 300, 0, 26), Position = UDim2.new(0, 20, 0, 14),
+    BackgroundTransparency = 1, Text = "VERA HUB",
+    TextColor3 = T.Text, Font = T.FontBold, TextSize = 20,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, Header)
+local Dot = new("Frame", {
+    Size = UDim2.new(0, 6, 0, 6), Position = UDim2.new(0, 132, 0, 27),
+    BackgroundColor3 = T.Success, BorderSizePixel = 0,
+}, Header); corner(Dot, 3)
+new("TextLabel", {
+    Size = UDim2.new(0, 300, 0, 16), Position = UDim2.new(0, 20, 0, 40),
+    BackgroundTransparency = 1, Text = "Blox Fruits  ·  Auto Farm Suite",
+    TextColor3 = T.Dim, Font = T.Font, TextSize = 11,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, Header)
+local CloseBtn = new("TextButton", {
+    Size = UDim2.new(0, 28, 0, 28), Position = UDim2.new(1, -38, 0, 18),
+    BackgroundColor3 = T.Surface2, Text = "×", TextColor3 = T.Dim,
+    Font = T.FontBold, TextSize = 18, AutoButtonColor = false, BorderSizePixel = 0,
+}, Header); corner(CloseBtn, 6)
+CloseBtn.MouseEnter:Connect(function()
+    TweenService:Create(CloseBtn, TweenInfo.new(0.15), { BackgroundColor3 = T.Danger, TextColor3 = Color3.new(1,1,1) }):Play()
+end)
+CloseBtn.MouseLeave:Connect(function()
+    TweenService:Create(CloseBtn, TweenInfo.new(0.15), { BackgroundColor3 = T.Surface2, TextColor3 = T.Dim }):Play()
+end)
+CloseBtn.MouseButton1Click:Connect(function() toggleMain(false) end)
+
+-- drag
+do
+    local dragging, dragStart, startPos
+    Header.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; dragStart = i.Position; startPos = Main.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local d = i.Position - dragStart
+            Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+end
+
+-- body
+local Body = new("Frame", {
+    Size = UDim2.new(1, 0, 1, -64), Position = UDim2.new(0, 0, 0, 64),
+    BackgroundTransparency = 1,
+}, Main)
+local Sidebar = new("Frame", {
+    Size = UDim2.new(0, 120, 1, 0),
+    BackgroundColor3 = T.Surface, BackgroundTransparency = 0.4, BorderSizePixel = 0,
+}, Body)
+new("UIPadding", { PaddingTop = UDim.new(0, 12), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, Sidebar)
+new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, Sidebar)
+local Content = new("Frame", {
+    Size = UDim2.new(1, -120, 1, 0), Position = UDim2.new(0, 120, 0, 0),
+    BackgroundTransparency = 1,
+}, Body)
+new("UIPadding", {
+    PaddingTop = UDim.new(0, 12), PaddingLeft = UDim.new(0, 14),
+    PaddingRight = UDim.new(0, 14), PaddingBottom = UDim.new(0, 12),
+}, Content)
+
+-- tabs
+local tabs, pages, activeTab = {}, {}, nil
+local function switchTab(name)
+    if activeTab == name then return end
+    for n, t in pairs(tabs) do
+        local on = (n == name)
+        TweenService:Create(t.btn, TweenInfo.new(0.15), {
+            BackgroundColor3 = on and T.Accent or T.Surface,
+            TextColor3 = on and Color3.new(1,1,1) or T.Dim,
+        }):Play()
+    end
+    for n, p in pairs(pages) do p.Visible = (n == name) end
+    activeTab = name
+end
+local function createTab(name, label)
+    local btn = new("TextButton", {
+        Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = T.Surface,
+        Text = label, TextColor3 = T.Dim, Font = T.Font, TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        AutoButtonColor = false, BorderSizePixel = 0,
+    }, Sidebar)
+    new("UIPadding", { PaddingLeft = UDim.new(0, 12) }, btn); corner(btn, 8)
+    local page = new("ScrollingFrame", {
+        Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
+        BorderSizePixel = 0, ScrollBarThickness = 3,
+        ScrollBarImageColor3 = T.Accent, CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y, Visible = false,
+    }, Content)
+    new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, page)
+    tabs[name] = { btn = btn }; pages[name] = page
+    btn.MouseButton1Click:Connect(function() switchTab(name) end)
+    btn.MouseEnter:Connect(function()
+        if activeTab ~= name then
+            TweenService:Create(btn, TweenInfo.new(0.12), { BackgroundColor3 = T.Surface2 }):Play()
+        end
+    end)
+    btn.MouseLeave:Connect(function()
+        if activeTab ~= name then
+            TweenService:Create(btn, TweenInfo.new(0.12), { BackgroundColor3 = T.Surface }):Play()
+        end
+    end)
+    return page
+end
+
+-- components
+local function section(parent, text)
+    local f = new("Frame", { Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1 }, parent)
+    new("TextLabel", {
+        Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
+        Text = string.upper(text), TextColor3 = T.Dim,
+        Font = T.FontBold, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left,
+    }, f); return f
+end
+
+local function toggle(parent, label, default, callback)
+    local f = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = T.Surface, BorderSizePixel = 0,
+    }, parent); corner(f, 8); stroke(f, T.Border, 1)
+    new("TextLabel", {
+        Size = UDim2.new(1, -70, 1, 0), Position = UDim2.new(0, 14, 0, 0),
+        BackgroundTransparency = 1, Text = label, TextColor3 = T.Text,
+        Font = T.Font, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left,
+    }, f)
+    local track = new("Frame", {
+        Size = UDim2.new(0, 38, 0, 20), Position = UDim2.new(1, -52, 0.5, -10),
+        BackgroundColor3 = T.Surface2, BorderSizePixel = 0,
+    }, f); corner(track, 10)
+    local knob = new("Frame", {
+        Size = UDim2.new(0, 16, 0, 16), Position = UDim2.new(0, 2, 0.5, -8),
+        BackgroundColor3 = T.Dim, BorderSizePixel = 0,
+    }, track); corner(knob, 8)
+    local state = default
+    local function apply(anim)
+        local ti = TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        local pos = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+        local kc  = state and Color3.new(1,1,1) or T.Dim
+        local tc  = state and T.Accent or T.Surface2
+        if anim then
+            TweenService:Create(knob, ti, { Position = pos, BackgroundColor3 = kc }):Play()
+            TweenService:Create(track, ti, { BackgroundColor3 = tc }):Play()
+        else
+            knob.Position = pos; knob.BackgroundColor3 = kc; track.BackgroundColor3 = tc
+        end
+    end
+    apply(false)
+    local click = new("TextButton", {
+        Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "",
+    }, f)
+    click.MouseButton1Click:Connect(function()
+        state = not state; apply(true)
+        if callback then callback(state) end
+    end)
+    return f
+end
+
+local function slider(parent, label, min, max, default, step, callback)
+    local f = new("Frame", { Size = UDim2.new(1, 0, 0, 52), BackgroundTransparency = 1 }, parent)
+    new("TextLabel", {
+        Size = UDim2.new(1, -80, 0, 20), Position = UDim2.new(0, 4, 0, 0),
+        BackgroundTransparency = 1, Text = label, TextColor3 = T.Text,
+        Font = T.Font, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left,
+    }, f)
+    local valLabel = new("TextLabel", {
+        Size = UDim2.new(0, 70, 0, 20), Position = UDim2.new(1, -74, 0, 0),
+        BackgroundTransparency = 1, Text = tostring(default),
+        TextColor3 = T.Accent, Font = T.FontBold, TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Right,
+    }, f)
+    local track = new("Frame", {
+        Size = UDim2.new(1, -8, 0, 6), Position = UDim2.new(0, 4, 0, 30),
+        BackgroundColor3 = T.Surface2, BorderSizePixel = 0,
+    }, f); corner(track, 3)
+    local ratio0 = (default - min) / (max - min)
+    local fill = new("Frame", {
+        Size = UDim2.new(ratio0, 0, 1, 0), BackgroundColor3 = T.Accent, BorderSizePixel = 0,
+    }, track); corner(fill, 3)
+    new("UIGradient", { Color = ColorSequence.new(T.Accent, T.Accent2), Rotation = 15 }, fill)
+    local knob = new("Frame", {
+        Size = UDim2.new(0, 14, 0, 14), AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(ratio0, 0, 0.5, 0),
+        BackgroundColor3 = Color3.new(1,1,1), BorderSizePixel = 0, ZIndex = 2,
+    }, track); corner(knob, 7)
+    local draggingSlider = false
+    local function setFromX(ax)
+        local ta, tw = track.AbsolutePosition.X, track.AbsoluteSize.X
+        local r = math.clamp((ax - ta) / tw, 0, 1)
+        local v = min + r * (max - min)
+        v = math.floor(v / step + 0.5) * step
+        if step < 1 then v = math.floor(v * 100 + 0.5) / 100 else v = math.floor(v + 0.5) end
+        fill.Size = UDim2.new(r, 0, 1, 0)
+        knob.Position = UDim2.new(r, 0, 0.5, 0)
+        valLabel.Text = tostring(v)
+        if callback then callback(v) end
+    end
+    track.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            draggingSlider = true; setFromX(i.Position.X)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if draggingSlider and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            setFromX(i.Position.X)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            draggingSlider = false
+        end
+    end)
+    return f
+end
+
+local function button(parent, label, callback)
+    local b = new("TextButton", {
+        Size = UDim2.new(1, 0, 0, 38), BackgroundColor3 = Color3.new(1,1,1),
+        Text = label, TextColor3 = Color3.new(1,1,1),
+        Font = T.FontBold, TextSize = 14, AutoButtonColor = false, BorderSizePixel = 0,
+    }, parent); corner(b, 8)
+    new("UIGradient", { Color = ColorSequence.new(T.Accent, T.Accent2), Rotation = 15 }, b)
+    b.MouseEnter:Connect(function()
+        TweenService:Create(b, TweenInfo.new(0.15), { BackgroundColor3 = Color3.fromRGB(180, 160, 255) }):Play()
+    end)
+    b.MouseLeave:Connect(function()
+        TweenService:Create(b, TweenInfo.new(0.15), { BackgroundColor3 = Color3.new(1,1,1) }):Play()
+    end)
+    b.MouseButton1Click:Connect(function() if callback then callback() end end)
+    return b
+end
+
+-- pages
+local farmPage     = createTab("Farm",     "Farm")
+local combatPage   = createTab("Combat",   "Combat")
+local movePage     = createTab("Move",     "Move")
+local settingsPage = createTab("Settings", "Settings")
+
+section(farmPage, "Automation")
+toggle(farmPage, "Auto Farm", Config.AutoFarm, function(v) Config.AutoFarm = v end)
+toggle(farmPage, "Bring Mob", Config.BringMob, function(v) Config.BringMob = v end)
+toggle(farmPage, "Auto Quest", Config.AutoQuest, function(v) Config.AutoQuest = v end)
+
+section(combatPage, "Fast Attack")
+toggle(combatPage, "Enable Fast Attack", Config.FastAttack, function(v) Config.FastAttack = v end)
+slider(combatPage, "Attack Speed (lower = faster)", 0.05, 0.5, Config.FastAttackSpeed, 0.01, function(v) Config.FastAttackSpeed = v end)
+
+section(combatPage, "Haki")
+toggle(combatPage, "Auto Buso Haki", Config.AutoHaki, function(v) Config.AutoHaki = v end)
+toggle(combatPage, "Auto Ken Haki", Config.AutoObservation, function(v) Config.AutoObservation = v end)
+
+section(movePage, "Tween")
+slider(movePage, "Tween Speed (studs/s)", 50, 400, Config.TweenSpeed, 10, function(v) Config.TweenSpeed = v end)
+slider(movePage, "Max Tween Distance", 100, 300, Config.MaxTweenDistance, 10, function(v) Config.MaxTweenDistance = v end)
+new("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 32), BackgroundTransparency = 1,
+    Text = "Capped at 300 studs to avoid tween failures on long jumps.",
+    TextColor3 = T.Dim, Font = T.Font, TextSize = 11,
+    TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
+}, movePage)
+
+section(settingsPage, "Misc")
+toggle(settingsPage, "Anti AFK", Config.AntiAFK, function(v) Config.AntiAFK = v end)
+
+section(settingsPage, "Session")
+button(settingsPage, "Rejoin Server", function()
+    game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+end)
+button(settingsPage, "Close Hub", function()
+    TweenService:Create(UIScale, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In), { Scale = 0 }):Play()
+    task.wait(0.3)
+    ScreenGui:Destroy()
+end)
+
+switchTab("Farm")
+
+-- Insert toggle
+UserInputService.InputBegan:Connect(function(i, gp)
+    if gp then return end
+    if i.KeyCode == Enum.KeyCode.Insert then toggleMain() end
+end)
+
+-- ============================================================
+-- FARM LOGIC
+-- ============================================================
+local function getChar() return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait() end
+local function getHum()  return getChar():FindFirstChildOfClass("Humanoid") end
+local function getRoot() return getChar():FindFirstChild("HumanoidRootPart") end
+
+if Config.AntiAFK then
+    LocalPlayer.Idled:Connect(function()
+        pcall(function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new())
+        end)
+    end)
+end
+
+RunService.Heartbeat:Connect(function()
+    if not Config.FastAttack then return end
+    local hum = getHum()
+    if hum then
+        pcall(function()
+            hum:SetAttribute("AttackCooldown", Config.FastAttackSpeed)
+            hum:SetAttribute("SwingCooldown", Config.FastAttackSpeed)
+        end)
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.4) do
+        if not Config.AutoFarm then continue end
+        local char, hum, root = getChar(), getHum(), getRoot()
+        if not (hum and root and hum.Health > 0) then continue end
+        if Config.BringMob then
+            for _, obj in ipairs(Workspace:GetDescendants()) do
+                if obj:IsA("Humanoid") and obj.Health > 0 and obj.Parent ~= char then
+                    local mroot = obj.Parent and obj.Parent:FindFirstChild("HumanoidRootPart")
+                    if mroot then
+                        pcall(function()
+                            mroot.CFrame = root.CFrame * CFrame.new(0, 0, -3)
+                        end)
+                    end
+                end
+            end
+        end
+    end
+end)
+
+print("[VERA HUB] loaded. Insert = toggle menu. Dynamic island active.")
